@@ -2,14 +2,17 @@ package com.lingframe.dashboard.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lingframe.api.config.GovernancePolicy;
+import com.lingframe.api.exception.LingNotFoundException;
 import com.lingframe.api.security.AccessType;
 import com.lingframe.api.security.Capabilities;
 import com.lingframe.api.security.PermissionService;
 import com.lingframe.core.config.LingFrameConfig;
+import com.lingframe.core.fsm.InstanceStatus;
 import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.governance.GovernanceAdminService;
 import com.lingframe.core.ling.InstancePool;
+import com.lingframe.core.ling.LingInstanceSnapshot;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRuntime;
 import com.lingframe.core.ling.LingUninstallResult;
@@ -18,6 +21,7 @@ import com.lingframe.core.spi.LeakRiskLevel;
 import com.lingframe.core.spi.LeakRiskReport;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
+import com.lingframe.dashboard.dto.LingInstanceSnapshotDTO;
 import com.lingframe.dashboard.dto.LingUninstallResultDTO;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import org.junit.jupiter.api.DisplayName;
@@ -33,6 +37,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
 import static org.mockito.ArgumentMatchers.any;
@@ -299,6 +304,58 @@ class DashboardServiceTest {
             assertEquals("1.0.1", result.getVersion());
             assertEquals(LeakRiskLevel.CHECK_FAILED, result.getOverallRiskLevel());
             assertEquals(1, result.getReports().size());
+        }
+
+        @Test
+        @DisplayName("卸载结果应可按操作标识再次查询")
+        void uninstallResultShouldBeQueryableByOperationId() {
+            DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
+                    governanceAdmin, lingInfoConverter, permissionService, runtimeCoordinator, null, SHARED_OBJECT_MAPPER);
+            when(lifecycleEngine.undeployWithReport("ling1"))
+                    .thenReturn(LingUninstallResult.triggered("ling1", null, Arrays.<LeakRiskReport>asList()));
+
+            LingUninstallResultDTO result = service.uninstallLing("ling1");
+
+            assertNotNull(result.getOperationId());
+            assertEquals(result, service.getUninstallOperation(result.getOperationId()));
+        }
+    }
+
+    @Nested
+    @DisplayName("实例代次查询")
+    class InstanceSnapshotTests {
+
+        @Test
+        @DisplayName("应返回实例状态、接流资格和在途数量")
+        void shouldExposeRuntimeInstanceFacts() {
+            DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
+                    governanceAdmin, lingInfoConverter, permissionService, runtimeCoordinator, null, SHARED_OBJECT_MAPPER);
+            LingRuntime runtime = mock(LingRuntime.class);
+            when(lingRepository.getRuntime("ling1")).thenReturn(runtime);
+            when(runtime.getInstanceSnapshots()).thenReturn(Arrays.asList(
+                    new LingInstanceSnapshot("instance-1", "ling1", "1.0.0", InstanceStatus.READY,
+                            true, false, 2),
+                    new LingInstanceSnapshot("instance-2", "ling1", "1.0.0", InstanceStatus.STOPPING,
+                            false, true, 1)));
+
+            java.util.List<LingInstanceSnapshotDTO> snapshots = service.getInstanceSnapshots("ling1");
+
+            assertEquals(2, snapshots.size());
+            assertTrue(snapshots.get(0).isAcceptingRequests());
+            assertEquals(2, snapshots.get(0).getActiveRequestCount());
+            assertTrue(snapshots.get(1).isDraining());
+            assertTrue(snapshots.get(1).isAdmissionDisabled());
+            assertTrue(!snapshots.get(1).isAcceptingRequests());
+        }
+
+        @Test
+        @DisplayName("查询不存在灵元时应拒绝请求")
+        void shouldRejectUnknownLing() {
+            DashboardService service = new DashboardService(lingFrameConfig, lifecycleEngine, lingRepository,
+                    governanceAdmin, lingInfoConverter, permissionService, runtimeCoordinator, null, SHARED_OBJECT_MAPPER);
+            when(lingRepository.getRuntime("missing")).thenReturn(null);
+
+            assertThrows(LingNotFoundException.class, () -> service.getInstanceSnapshots("missing"));
         }
     }
 }

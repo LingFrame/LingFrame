@@ -350,6 +350,36 @@ public class LingController {
         }
     }
 
+    /**
+     * 获取灵元当前持有的实例代次运行快照。
+     */
+    @GetMapping("/{lingId}/instances")
+    public ApiResponse<List<LingInstanceSnapshotDTO>> getInstanceSnapshots(@PathVariable String lingId) {
+        try {
+            return ApiResponse.ok(dashboardService.getInstanceSnapshots(lingId));
+        } catch (Exception e) {
+            log.error("Failed to get instance snapshots: {}", lingId, e);
+            return ApiResponse.error("获取实例快照失败", e);
+        }
+    }
+
+    /**
+     * 按操作标识查询本进程内保留的卸载结果。
+     */
+    @GetMapping("/operations/{operationId}")
+    public ApiResponse<LingUninstallResultDTO> getUninstallOperation(@PathVariable String operationId) {
+        try {
+            LingUninstallResultDTO result = dashboardService.getUninstallOperation(operationId);
+            if (result == null) {
+                return ApiResponse.error("卸载操作不存在: " + operationId);
+            }
+            return ApiResponse.ok(result);
+        } catch (Exception e) {
+            log.error("Failed to get uninstall operation: {}", operationId, e);
+            return ApiResponse.error("获取卸载操作失败", e);
+        }
+    }
+
     @PostMapping("/{lingId}/stats/reset")
     public ApiResponse<Void> resetStats(@PathVariable String lingId) {
         try {

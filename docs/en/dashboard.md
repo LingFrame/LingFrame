@@ -178,12 +178,15 @@ Token is sent via the `X-Access-Token` header only.
 | DELETE | `/lingframe/dashboard/lings/uninstall/{lingId}/{version}` | Uninstall a specific version |
 | POST | `/lingframe/dashboard/lings/{lingId}/reload` | Hot-reload in dev mode |
 | POST | `/lingframe/dashboard/lings/{lingId}/status` | Update the ling's runtime state |
+| GET | `/lingframe/dashboard/lings/{lingId}/instances` | Query instance generations, admission eligibility, and in-flight requests |
+| GET | `/lingframe/dashboard/lings/operations/{operationId}` | Query an uninstall result retained in this process |
 
 ### Weight Routing
 
 | Method | Endpoint | Description |
 | :-- | :-- | :-- |
 | POST | `/lingframe/dashboard/contract-routing/{contractId}/weight` | Set the weight of a specific provider under a contract |
+| PUT | `/lingframe/dashboard/contract-routing/{contractId}/weights` | Atomically replace the complete weight policy |
 
 Example body:
 
@@ -195,6 +198,20 @@ Example body:
 ```
 
 > `providerKey` is the routing key—always `lingId:version` for a Ling (version sourced from the bound instance context), bare `lingcore-app` for LingCore, consistent across registration and routing read-path keying. `weight` is an integer 0-100; once the Dashboard pushes it, the runtime weight in `ProviderWeightRouter` is overridden immediately and takes effect on both IPC and Web governance chains.
+
+Production canary releases should use the full-policy endpoint to avoid an intermediate policy while updating providers one by one:
+
+```json
+{
+  "expectedRevision": "7",
+  "weights": {
+    "order-ling:1.0.0": 90,
+    "order-ling:1.1.0": 10
+  }
+}
+```
+
+The publish is rejected when `expectedRevision` is stale. A successful response returns the new policy revision and the complete effective snapshot. The single-provider endpoint remains for compatibility and low-risk adjustments.
 
 ### Governance Rules
 

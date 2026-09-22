@@ -12,6 +12,7 @@ import com.lingframe.core.fsm.RuntimeCoordinator;
 import com.lingframe.core.fsm.RuntimeStatus;
 import com.lingframe.core.fsm.TransitionRecord;
 import com.lingframe.core.governance.GovernanceAdminService;
+import com.lingframe.core.ling.LingInstanceSnapshot;
 import com.lingframe.core.ling.LingLifecycleEngine;
 import com.lingframe.core.ling.LingRepository;
 import com.lingframe.core.ling.LingRuntime;
@@ -20,11 +21,12 @@ import com.lingframe.core.routing.MigrationStateHolder;
 import com.lingframe.dashboard.converter.LingInfoConverter;
 import com.lingframe.dashboard.dto.InvocationGovernanceDTO;
 import com.lingframe.dashboard.dto.LingInfoDTO;
-import com.lingframe.dashboard.dto.LingUninstallResultDTO;
+import com.lingframe.dashboard.dto.LingInstanceSnapshotDTO;
 import com.lingframe.dashboard.dto.LingPackageDTO;
 import com.lingframe.dashboard.dto.ResourcePermissionDTO;
 import com.lingframe.dashboard.dto.TransitionHistoryDTO;
 import com.lingframe.dashboard.dto.TrafficStatsDTO;
+import com.lingframe.dashboard.dto.LingUninstallResultDTO;
 import com.lingframe.dashboard.storage.GovernanceStorage;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -33,8 +35,10 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.LinkedHashMap;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -62,6 +66,21 @@ public class DashboardService {
     private final DashboardUninstallResultMapper uninstallResultMapper;
     // 复用 Spring 容器中的单例 ObjectMapper，避免每次灰度配置序列化都创建新实例
     private final ObjectMapper objectMapper;
+    /**
+     * 进程内保留已完成卸载操作的结果，供控制面按 operationId 查询。
+     * <p>
+     * 该记录只表达本 JVM 的运行期事实，不替代上层的耐久操作历史。
+     */
+    private static final int MAX_UNINSTALL_OPERATIONS = 256;
+    private final Map<String, LingUninstallResultDTO> uninstallOperations =
+            java.util.Collections.synchronizedMap(new LinkedHashMap<String, LingUninstallResultDTO>(32, 0.75f, true) {
+                private static final long serialVersionUID = 1L;
+
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, LingUninstallResultDTO> eldest) {
+                    return size() > MAX_UNINSTALL_OPERATIONS;
+                }
+            });
 
     // 持久化存储（可选，SQLite 启用时注入）
     private GovernanceStorage governanceStorage;
@@ -164,6 +183,7 @@ public class DashboardService {
 
     public LingUninstallResultDTO uninstallLing(String lingId, boolean deleteFile) {
         LingUninstallResultDTO result = uninstallResultMapper.toDto(lingOperations.uninstallLing(lingId));
+        rememberUninstallOperation(result);
         if (deleteFile) {
             deleteHomePackageFile(lingId, null);
         }
@@ -176,10 +196,61 @@ public class DashboardService {
 
     public LingUninstallResultDTO uninstallLing(String lingId, String version, boolean deleteFile) {
         LingUninstallResultDTO result = uninstallResultMapper.toDto(lingOperations.uninstallLing(lingId, version));
+        rememberUninstallOperation(result);
         if (deleteFile) {
             deleteHomePackageFile(lingId, version);
         }
         return result;
+    }
+
+    /**
+     * 查询某个灵元当前仍由运行时持有的实例代次快照。
+     *
+     * @param lingId 灵元标识
+     * @return 实例快照列表
+     */
+    public List<LingInstanceSnapshotDTO> getInstanceSnapshots(String lingId) {
+        LingRuntime runtime = lingRepository.getRuntime(lingId);
+        if (runtime == null) {
+            throw new LingNotFoundException(lingId);
+        }
+        return runtime.getInstanceSnapshots().stream()
+                .map(this::toInstanceSnapshotDTO)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 查询本进程内已完成卸载操作的结果。
+     *
+     * @param operationId 卸载操作标识
+     * @return 结果；不存在时返回 {@code null}
+     */
+    public LingUninstallResultDTO getUninstallOperation(String operationId) {
+        if (operationId == null || operationId.trim().isEmpty()) {
+            throw new InvalidArgumentException("operationId", "operationId must not be blank");
+        }
+        return uninstallOperations.get(operationId);
+    }
+
+    private void rememberUninstallOperation(LingUninstallResultDTO result) {
+        if (result != null && result.getOperationId() != null && !result.getOperationId().trim().isEmpty()) {
+            uninstallOperations.put(result.getOperationId(), result);
+        }
+    }
+
+    private LingInstanceSnapshotDTO toInstanceSnapshotDTO(LingInstanceSnapshot snapshot) {
+        return LingInstanceSnapshotDTO.builder()
+                .instanceId(snapshot.getInstanceId())
+                .lingId(snapshot.getLingId())
+                .version(snapshot.getVersion())
+                .status(snapshot.getStatus().name())
+                .defaultInstance(snapshot.isDefaultInstance())
+                .admissionDisabled(snapshot.isAdmissionDisabled())
+                .acceptingRequests(snapshot.isReady() && !snapshot.isAdmissionDisabled())
+                .activeRequestCount(snapshot.getActiveRequestCount())
+                .ready(snapshot.isReady())
+                .draining(snapshot.isDraining())
+                .build();
     }
 
 

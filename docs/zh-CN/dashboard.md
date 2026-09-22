@@ -178,12 +178,15 @@ Token 只走 Header：`X-Access-Token`。
 | DELETE | `/lingframe/dashboard/lings/uninstall/{lingId}/{version}` | 卸载指定版本 |
 | POST | `/lingframe/dashboard/lings/{lingId}/reload` | 开发态热重载 |
 | POST | `/lingframe/dashboard/lings/{lingId}/status` | 更新灵元运行时状态 |
+| GET | `/lingframe/dashboard/lings/{lingId}/instances` | 查询实例代次、接流资格和在途请求数 |
+| GET | `/lingframe/dashboard/lings/operations/{operationId}` | 查询本进程内保留的卸载结果 |
 
 ### 权重路由
 
 | 方法 | 端点 | 说明 |
 | :-- | :-- | :-- |
 | POST | `/lingframe/dashboard/contract-routing/{contractId}/weight` | 设置某契约下指定 provider 的权重 |
+| PUT | `/lingframe/dashboard/contract-routing/{contractId}/weights` | 按完整策略快照原子替换权重 |
 
 请求体示例：
 
@@ -195,6 +198,20 @@ Token 只走 Header：`X-Access-Token`。
 ```
 
 > `providerKey` 即路由键——灵元恒为 `lingId:version`（版本真源来自绑定实例上下文），灵核为裸 `lingcore-app`，写侧注册与路由读路径键化一致。`weight` 为 0-100 整数；Dashboard 下发后立即覆盖 `ProviderWeightRouter` 内的运行期权重，IPC 与 Web 治理链同时生效。
+
+生产灰度应使用整策略发布接口，避免逐项更新产生中间策略：
+
+```json
+{
+  "expectedRevision": "7",
+  "weights": {
+    "order-ling:1.0.0": 90,
+    "order-ling:1.1.0": 10
+  }
+}
+```
+
+`expectedRevision` 不匹配时发布会被拒绝；成功响应返回新的策略修订号和完整生效快照。单项接口保留用于兼容和低风险调整。
 
 ### 治理规则
 
