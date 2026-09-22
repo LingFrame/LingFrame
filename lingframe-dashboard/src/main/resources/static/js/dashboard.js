@@ -20,6 +20,8 @@ createApp({
         const ipcTarget = ref('user-ling');
         const logs = ref([]);
         const lastAudit = ref(null);
+        const instanceSnapshots = ref([]);
+        const instanceSnapshotsLoading = ref(false);
         const logViewMode = ref('current');
         const logContainer = ref(null);
         const isUserScrolling = ref(false);
@@ -1053,6 +1055,21 @@ createApp({
             uninstallResultModal.result = null;
         };
 
+        const refreshUninstallOperation = async () => {
+            const operationId = uninstallResultModal.result?.operationId;
+            if (!operationId) return;
+            try {
+                const result = await api.get('/lings/operations/' + encodeURIComponent(operationId));
+                uninstallResultModal.result = result;
+                showToast(result.cleanupCompleted && result.classLoaderGcConfirmed
+                    ? t('uninstallResult.operationComplete')
+                    : t('uninstallResult.operationPending'), result.cleanupCompleted ? 'success' : 'info');
+                refreshLings();
+            } catch (e) {
+                showToast(t('toast.operationRefreshFailed') + ': ' + e.message, 'error');
+            }
+        };
+
         // ==================== Token 与认证 ====================
         const getToken = () => localStorage.getItem('lingframe_access_token') || '';
         const withAuthHeaders = (headers = {}) => {
@@ -1281,6 +1298,31 @@ createApp({
             // 同步 IPC 开关状态
             syncIpcSwitch();
             syncInvocationForm();
+        };
+
+        // 实例代次是生命周期事实的唯一展示来源，不能从版本汇总信息推断。
+        const fetchInstanceSnapshots = async (lingId = activeId.value) => {
+            if (!lingId) {
+                instanceSnapshots.value = [];
+                return;
+            }
+            instanceSnapshotsLoading.value = true;
+            const requestedLingId = lingId;
+            try {
+                const data = await api.get('/lings/' + encodeURIComponent(requestedLingId) + '/instances');
+                if (activeId.value === requestedLingId) {
+                    instanceSnapshots.value = Array.isArray(data) ? data : [];
+                }
+            } catch (e) {
+                if (activeId.value === requestedLingId) {
+                    instanceSnapshots.value = [];
+                    console.warn('Failed to fetch instance snapshots:', e.message);
+                }
+            } finally {
+                if (activeId.value === requestedLingId) {
+                    instanceSnapshotsLoading.value = false;
+                }
+            }
         };
 
         // 流量切分 / 停流只走路由权重（灰度滑块 / 契约权重），不要用 RuntimeStatus 冒充停流。
@@ -3105,6 +3147,7 @@ createApp({
         watch(activeLing, () => {
             syncIpcSwitch();
             syncInvocationForm();
+            fetchInstanceSnapshots();
         });
 
         // 监听 locale 变化，按需更新时间格式（可选）
@@ -3397,6 +3440,7 @@ createApp({
             locale, supportedLocales, switchLocale, t,
 
             lings, activeId, activeNav, lingSearch, filteredLings, migrationPhase, migrationRecord, isAuto, ipcEnabled, ipcTarget,
+            instanceSnapshots, instanceSnapshotsLoading, fetchInstanceSnapshots,
             logs, lastAudit, logViewMode, logAggregationMode, logFilters, logContainer, isUserScrolling, logPaused, sidebarOpen,
             currentEnv, currentTime, sseStatus, sseStatusText,
             stats, loading, modal, toasts, envLabels, uploadModal, timelineModal, appState, authenticated, loginError, submitAuth,
@@ -3441,6 +3485,7 @@ createApp({
             fetchPerformanceMetrics, fetchDashboardSummary,
             fetchLingResourceMetrics, fetchLeakDetections, fetchThreadPoolStats, formatBytes,
             uninstallResultModal, closeUninstallResultModal, getUninstallRiskLabel, getUninstallRiskClass, getUninstallTriggerLabel,
+            refreshUninstallOperation,
 
             currentTheme, toggleTheme, packages, fetchPackages, deployPackage, deletePackageFile,
             consoleExpanded, hasNewTraceAlert, globalLogContainer, onboardingSteps, packageSearch, filteredPackages,

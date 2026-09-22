@@ -164,12 +164,35 @@
                                 }}</span>
                         </div>
                         <div class="result-meta-item">
-                                <span class="result-meta-label">{{ t('uninstallResult.precheckLabel') || '预检结论'
+                            <span class="result-meta-label">{{ t('uninstallResult.precheckLabel') || '预检结论'
                                     }}</span>
                             <span :class="getUninstallRiskClass(uninstallResultModal.result.overallRiskLevel)">
                                     {{ getUninstallRiskLabel(uninstallResultModal.result.overallRiskLevel) }}
                                 </span>
                         </div>
+                        <div class="result-meta-item">
+                            <span class="result-meta-label">{{ t('uninstallResult.operationIdLabel') || '操作标识' }}</span>
+                            <span class="result-meta-value font-mono text-xs">{{ uninstallResultModal.result.operationId || '-' }}</span>
+                        </div>
+                        <div class="result-meta-item">
+                            <span class="result-meta-label">{{ t('uninstallResult.cleanupLabel') || '清理完成' }}</span>
+                            <span :class="uninstallResultModal.result.cleanupCompleted ? 'text-green-400' : 'text-amber-400'">
+                                {{ uninstallResultModal.result.cleanupCompleted ? t('uninstallResult.confirmed') : t('uninstallResult.notConfirmed') }}
+                            </span>
+                        </div>
+                        <div class="result-meta-item">
+                            <span class="result-meta-label">{{ t('uninstallResult.gcLabel') || 'ClassLoader GC' }}</span>
+                            <span :class="uninstallResultModal.result.classLoaderGcConfirmed ? 'text-green-400' : 'text-amber-400'">
+                                {{ uninstallResultModal.result.classLoaderGcConfirmed ? t('uninstallResult.confirmed') : t('uninstallResult.notConfirmed') }}
+                            </span>
+                        </div>
+                    </div>
+                    <div v-if="uninstallResultModal.result.operationId" class="flex justify-end">
+                        <button @click="refreshUninstallOperation"
+                                class="px-3 py-1.5 rounded-lg text-xs t-bg-hover hover:t-bg-hover t-text flex items-center gap-1.5">
+                            <i class="fa-solid fa-rotate-right"></i>
+                            {{ t('uninstallResult.refreshOperation') }}
+                        </button>
                     </div>
                     <p class="text-xs t-text-sub mt-3">
                         {{ t('uninstallResult.notice') || '当前策略为提示不拦截：即使预检发现风险，卸载动作仍可能已触发。'
@@ -863,6 +886,57 @@
                                                 </tbody>
                                             </table>
                                         </div>
+                                    </div>
+
+                                    <!-- 1.6 实例代次事实 -->
+                                    <div class="border-t t-border pt-5 space-y-4">
+                                        <div class="flex items-center justify-between gap-3">
+                                            <h4 class="text-sm font-bold t-text flex items-center gap-1.5">
+                                                <i class="fa-solid fa-fingerprint text-violet-400"></i>
+                                                {{ t('control.instanceGenerations') }}
+                                            </h4>
+                                            <button @click="fetchInstanceSnapshots(activeLing.lingId)"
+                                                    :disabled="instanceSnapshotsLoading"
+                                                    class="text-xs t-text-sub hover:t-text disabled:opacity-40">
+                                                <i class="fa-solid fa-rotate-right" :class="instanceSnapshotsLoading ? 'fa-spin' : ''"></i>
+                                                {{ t('control.refreshInstances') }}
+                                            </button>
+                                        </div>
+                                        <div v-if="instanceSnapshotsLoading && !instanceSnapshots.length" class="text-center py-4">
+                                            <span class="spinner" style="width:20px;height:20px;border-width:2px;"></span>
+                                        </div>
+                                        <div v-else-if="instanceSnapshots.length" class="overflow-x-auto border t-border rounded-lg">
+                                            <table class="w-full text-left text-xs">
+                                                <thead>
+                                                <tr class="t-text-sub border-b t-border t-bg-faint">
+                                                    <th class="py-2 px-3 font-semibold">{{ t('control.instanceId') }}</th>
+                                                    <th class="py-2 px-3 font-semibold">{{ t('control.version') }}</th>
+                                                    <th class="py-2 px-3 font-semibold">{{ t('control.status') }}</th>
+                                                    <th class="py-2 px-3 font-semibold">{{ t('control.admission') }}</th>
+                                                    <th class="py-2 px-3 font-semibold text-right">{{ t('control.inFlight') }}</th>
+                                                </tr>
+                                                </thead>
+                                                <tbody>
+                                                <tr v-for="instance in instanceSnapshots" :key="instance.instanceId"
+                                                    class="border-b t-border last:border-0 hover:t-bg-faint transition-colors">
+                                                    <td class="py-2.5 px-3 font-mono t-text">{{ instance.instanceId || '-' }}</td>
+                                                    <td class="py-2.5 px-3 font-mono t-text-sub">{{ instance.version || '-' }}</td>
+                                                    <td class="py-2.5 px-3">
+                                                        <span class="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider"
+                                                              :class="getLingTagClass(instance.status)">{{ instance.status || '-' }}</span>
+                                                        <span v-if="instance.defaultInstance" class="ml-1 text-[10px] text-blue-400">DEFAULT</span>
+                                                    </td>
+                                                    <td class="py-2.5 px-3">
+                                                        <span :class="instance.acceptingRequests ? 'text-green-400' : 'text-amber-400'">
+                                                            {{ instance.acceptingRequests ? t('control.accepting') : t('control.isolated') }}
+                                                        </span>
+                                                    </td>
+                                                    <td class="py-2.5 px-3 text-right font-mono t-text">{{ instance.activeRequestCount || 0 }}</td>
+                                                </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <p v-else class="text-xs t-text-muted">{{ t('control.noInstances') }}</p>
                                     </div>
 
                                     <!-- 2. 资源隔离（实例级配置：本地缓存命名空间 + IPC） -->
