@@ -2,9 +2,15 @@ name: Release and Mirror
 
 on:
   workflow_run:
-    workflows: [CI]
+    workflows: [Main Smoke]
     types: [completed]
-    branches: ['release/**']
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '明确指定要重新发布的现有稳定版本（仅用于恢复发布物）'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -17,24 +23,37 @@ jobs:
   release:
     if: >-
       github.repository == 'LingFrame/LingFrame' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      startsWith(github.event.workflow_run.head_branch, 'release/') &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      (
+        (
+          github.event_name == 'workflow_run' &&
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          github.event.workflow_run.head_repository.full_name == github.repository
+        ) ||
+        (
+          github.event_name == 'workflow_dispatch' &&
+          github.ref_name == 'main' &&
+          inputs.version != ''
+        )
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
     outputs:
       tag: ${{ steps.prepare.outputs.tag }}
+      release_branch: ${{ steps.prepare.outputs.release_branch }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Check release intent and extract changelog
         id: prepare
+        env:
+          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
         run: python3 scripts/release/prepare.py
       - name: Create immutable release
         if: steps.prepare.outputs.release == 'true'
@@ -42,7 +61,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.prepare.outputs.tag }}
-          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+          RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -59,6 +78,19 @@ jobs:
             gh release create "$TAG" --verify-tag --title "灵珑·${{ steps.prepare.outputs.codename }}-$TAG" --generate-notes --notes-file release-notes.md
           fi
 
+      - name: Create or advance stable release branch
+        if: steps.prepare.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          RELEASE_BRANCH: ${{ steps.prepare.outputs.release_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GH_REPO}.git" \
+            "${RELEASE_SHA}:refs/heads/${RELEASE_BRANCH}"
+
   mirror:
     needs: release
     if: needs.release.outputs.tag != ''
@@ -72,14 +104,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Synchronize main and release tag
         env:
           PLATFORM: ${{ matrix.platform }}
           RELEASE_TAG: ${{ needs.release.outputs.tag }}
-          RELEASE_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RELEASE_BRANCH: ${{ needs.release.outputs.release_branch }}
           MIRROR_KEY: ${{ matrix.platform == 'gitee' && secrets.GITEE_SSH_KEY || secrets.GITCODE_SSH_KEY }}
           MIRROR_HOST_KEYS: ${{ secrets.MIRROR_KNOWN_HOSTS }}
         shell: bash

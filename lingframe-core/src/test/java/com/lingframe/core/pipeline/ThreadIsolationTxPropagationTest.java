@@ -62,12 +62,38 @@ class ThreadIsolationTxPropagationTest {
             });
             assertThrows(IllegalStateException.class, () -> propagation.doFilter(ctx, chain));
             assertFalse(LingTransactionContext.hasAnyConnection());
-            assertEquals("ok", propagation.doFilter(ctx, chain));
+            // Future 已完成不代表 worker 已重新回到 SynchronousQueue，准备失败后的立即重试
+            // 可能短暂触发 BULKHEAD_FULL；等待有限次数，避免把线程交接竞争误判为事务泄漏。
+            Object retryResult = null;
+            for (int i = 0; i < 100; i++) {
+                try {
+                    retryResult = propagation.doFilter(ctx, chain);
+                    break;
+                } catch (LingInvocationException e) {
+                    if (e.getKind() != LingInvocationException.ErrorKind.BULKHEAD_FULL || i == 99) {
+                        throw e;
+                    }
+                    // 让出调度后等待极短时间，确保 worker 有机会重新进入交接队列。
+                    Thread.sleep(2L);
+                }
+            }
+            assertEquals("ok", retryResult);
             assertFalse(LingTransactionContext.hasAnyConnection());
-            isolation.doFilter(ctx, worker -> {
-                assertFalse(LingTransactionContext.hasAnyConnection());
-                return null;
-            });
+            for (int i = 0; i < 100; i++) {
+                try {
+                    isolation.doFilter(ctx, worker -> {
+                        assertFalse(LingTransactionContext.hasAnyConnection());
+                        return null;
+                    });
+                    break;
+                } catch (LingInvocationException e) {
+                    if (e.getKind() != LingInvocationException.ErrorKind.BULKHEAD_FULL || i == 99) {
+                        throw e;
+                    }
+                    // 前一次调用已完成但 worker 仍在归还队列，等待交接完成后再做清理校验。
+                    Thread.sleep(2L);
+                }
+            }
         } finally {
             isolation.evict(LING_ID);
             InvocationContext.detach(null);

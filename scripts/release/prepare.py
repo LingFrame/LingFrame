@@ -26,9 +26,11 @@ def section(text, version):
     return body
 
 
-def prepare(root, previous):
+def prepare(root, previous, forced_version=None):
     version = revision((root / 'lingframe-dependencies/pom.xml').read_text(encoding='utf-8-sig'))
-    if version == revision(previous):
+    if forced_version and version != forced_version:
+        raise ValueError('Requested release version does not match the checked out source')
+    if not forced_version and version == revision(previous):
         return None
     if not re.fullmatch(r'\d+\.\d+\.\d+', version or ''):
         raise ValueError('A release requires a stable semantic version')
@@ -43,11 +45,13 @@ def prepare(root, previous):
 if __name__ == '__main__':
     previous = subprocess.check_output(
         ['git', 'show', 'HEAD^:lingframe-dependencies/pom.xml'])
-    result = prepare(Path('.'), previous)
+    result = prepare(Path('.'), previous, os.environ.get('RELEASE_VERSION') or None)
     with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
         output.write('release=' + str(result is not None).lower() + '\n')
         if result:
             version, codename, notes = result
             output.write('tag=V' + version + '\n')
             output.write('codename=' + codename[0] + '\n')
+            major_minor = '.'.join(version.split('.')[:2])
+            output.write('release_branch=release/' + major_minor + '.x\n')
             Path('release-notes.md').write_text(notes, encoding='utf-8')
