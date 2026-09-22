@@ -39,11 +39,26 @@ public class ProviderMetricsCollector {
      */
     public void recordInvocation(String contractId, String lingId,
                                  boolean success, long durationMs) {
+        recordInvocation(contractId, lingId, null, null, null, null, success, durationMs);
+    }
+
+    /**
+     * 记录带最终路由事实的 provider 调用。
+     *
+     * @param version 最终命中的版本
+     * @param instanceId 最终命中的实例代次
+     * @param policyRevision 生效的策略修订号
+     * @param routingReason 选路原因
+     */
+    public void recordInvocation(String contractId, String lingId, String version,
+                                 String instanceId, String policyRevision, String routingReason,
+                                 boolean success, long durationMs) {
         if (contractId == null || lingId == null) {
             return;
         }
-        String key = buildKey(contractId, lingId);
-        ProviderStats stats = statsMap.computeIfAbsent(key, k -> new ProviderStats(contractId, lingId));
+        String key = buildKey(contractId, lingId, version, instanceId, policyRevision, routingReason);
+        ProviderStats stats = statsMap.computeIfAbsent(key,
+                k -> new ProviderStats(contractId, lingId, version, instanceId, policyRevision, routingReason));
         stats.record(success, durationMs);
     }
 
@@ -94,7 +109,17 @@ public class ProviderMetricsCollector {
     }
 
     private String buildKey(String contractId, String lingId) {
-        return contractId + "|" + lingId;
+        return buildKey(contractId, lingId, null, null, null, null);
+    }
+
+    private String buildKey(String contractId, String lingId, String version,
+                            String instanceId, String policyRevision, String routingReason) {
+        return String.join("|", value(contractId), value(lingId), value(version), value(instanceId),
+                value(policyRevision), value(routingReason));
+    }
+
+    private String value(String value) {
+        return value == null ? "" : value;
     }
 
     /**
@@ -103,14 +128,23 @@ public class ProviderMetricsCollector {
     public static final class ProviderStats {
         private final String contractId;
         private final String lingId;
+        private final String version;
+        private final String instanceId;
+        private final String policyRevision;
+        private final String routingReason;
         private final AtomicLong totalInvocations = new AtomicLong();
         private final AtomicLong successCount = new AtomicLong();
         private final AtomicLong failureCount = new AtomicLong();
         private final AtomicLong totalDurationMs = new AtomicLong();
 
-        ProviderStats(String contractId, String lingId) {
+        ProviderStats(String contractId, String lingId, String version, String instanceId,
+                      String policyRevision, String routingReason) {
             this.contractId = contractId;
             this.lingId = lingId;
+            this.version = version;
+            this.instanceId = instanceId;
+            this.policyRevision = policyRevision;
+            this.routingReason = routingReason;
         }
 
         void record(boolean success, long durationMs) {
@@ -125,6 +159,10 @@ public class ProviderMetricsCollector {
 
         public String getContractId() { return contractId; }
         public String getLingId() { return lingId; }
+        public String getVersion() { return version; }
+        public String getInstanceId() { return instanceId; }
+        public String getPolicyRevision() { return policyRevision; }
+        public String getRoutingReason() { return routingReason; }
         public long getTotalInvocations() { return totalInvocations.get(); }
         public long getSuccessCount() { return successCount.get(); }
         public long getFailureCount() { return failureCount.get(); }

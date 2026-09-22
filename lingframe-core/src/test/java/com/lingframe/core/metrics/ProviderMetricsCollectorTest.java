@@ -22,6 +22,20 @@ class ProviderMetricsCollectorTest {
     class RecordAndQuery {
 
         @Test
+        @DisplayName("记录最终版本实例与策略修订事实")
+        void recordRoutingFacts() {
+            ProviderMetricsCollector collector = new ProviderMetricsCollector();
+            collector.recordInvocation("svc-a", "ling-a", "v2", "ling-a@v2#3", "p-7",
+                    "weight-policy", true, 12);
+
+            ProviderMetricsCollector.ProviderStats stats = collector.getStatsByContract("svc-a").get(0);
+            assertEquals("v2", stats.getVersion());
+            assertEquals("ling-a@v2#3", stats.getInstanceId());
+            assertEquals("p-7", stats.getPolicyRevision());
+            assertEquals("weight-policy", stats.getRoutingReason());
+        }
+
+        @Test
         @DisplayName("记录后可按契约查询到")
         void recordThenQueryByContract() {
             ProviderMetricsCollector collector = new ProviderMetricsCollector();

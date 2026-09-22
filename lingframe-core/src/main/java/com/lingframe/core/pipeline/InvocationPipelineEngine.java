@@ -2,6 +2,7 @@ package com.lingframe.core.pipeline;
 
 import com.lingframe.api.exception.LingInvocationException;
 import com.lingframe.core.metrics.ProviderMetricsCollector;
+import com.lingframe.core.routing.RoutingDecision;
 import com.lingframe.core.spi.LingFilterChain;
 
 /**
@@ -68,7 +69,14 @@ public class InvocationPipelineEngine {
         if (contractId == null || lingId == null) {
             return;
         }
-        providerMetricsCollector.recordInvocation(contractId, lingId, success, durationMs);
+        RoutingDecision decision = ctx.routing().getRoutingDecision();
+        if (decision == null) {
+            providerMetricsCollector.recordInvocation(contractId, lingId, success, durationMs);
+            return;
+        }
+        providerMetricsCollector.recordInvocation(contractId, lingId, decision.getVersion(),
+                decision.getInstanceId(), decision.getPolicyRevision(), decision.getReason(),
+                success, durationMs);
     }
 
     /**

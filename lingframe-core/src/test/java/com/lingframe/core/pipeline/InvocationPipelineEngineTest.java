@@ -1,6 +1,8 @@
 package com.lingframe.core.pipeline;
 
 import com.lingframe.api.exception.LingInvocationException;
+import com.lingframe.core.metrics.ProviderMetricsCollector;
+import com.lingframe.core.routing.RoutingDecision;
 import com.lingframe.core.spi.LingInvocationFilter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -33,6 +35,31 @@ class InvocationPipelineEngineTest {
     @Nested
     @DisplayName("invoke 流程")
     class InvokeFlow {
+
+        @Test
+        @DisplayName("调用指标记录最终版本实例与策略修订事实")
+        void recordsRoutingFacts() {
+            ProviderMetricsCollector collector = new ProviderMetricsCollector();
+            InvocationPipelineEngine observedEngine = new InvocationPipelineEngine(registry, collector);
+            when(registry.getOrderedFilters()).thenReturn(Collections.singletonList(
+                    (LingInvocationFilter) (ctx, chain) -> {
+                        ctx.setTargetLingId("ling-a");
+                        ctx.routing().setRoutingDecision(new RoutingDecision("ling-a", "v2",
+                                "ling-a@v2#3", "p-7", "weight-policy"));
+                        return "result";
+                    }
+            ));
+
+            InvocationContext ctx = InvocationContext.obtain();
+            ctx.setServiceFQSID("ling-a:Service");
+            observedEngine.invoke(ctx);
+
+            ProviderMetricsCollector.ProviderStats stats = collector.getStatsByContract("Service").get(0);
+            assertEquals("v2", stats.getVersion());
+            assertEquals("ling-a@v2#3", stats.getInstanceId());
+            assertEquals("p-7", stats.getPolicyRevision());
+            assertEquals("weight-policy", stats.getRoutingReason());
+        }
 
         @Test
         @DisplayName("invoke 执行过滤器链并返回结果")
