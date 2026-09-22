@@ -2,7 +2,7 @@
 
 LingFrame uses GitHub as its canonical release source. Pull requests run the full quality gate. Developers can manually dispatch the CI workflow with either the `full` or `performance` suite on a development branch. After a merge to `main`, `Main Smoke` runs a short post-merge verification; it does not repeat the full pull-request matrix.
 
-When `Main Smoke` succeeds, the release workflow checks whether the merged commit contains an explicit stable version change and matching release notes. Only then does it create an immutable `V<version>` tag, a GitHub Release, and finally create or advance the `release/<minor>.x` stable branch. Ordinary feature merges do not create a release. The 0.4 line uses the codename “Hanzhang”, which is retained for 0.4.6.
+When `Main Smoke` succeeds, the release workflow checks whether the merged commit contains an explicit stable version change and matching release notes. Only then does it create an immutable `V<version>` tag, a GitHub Release, and finally create or advance the `v<version>-release` stable branch. Ordinary feature merges do not create a release. The 0.4 line uses the codename “Hanzhang”, which is retained for 0.4.6.
 
 If a Release, tag, or stable branch is removed accidentally, manually run `Release and Mirror` on `main` and provide the existing stable version. This recovery path revalidates the checked-out source and changelogs before recreating the release artifacts and stable branch. Normal version releases still use only the automatic `Main Smoke` path.
 

@@ -52,6 +52,5 @@ if __name__ == '__main__':
             version, codename, notes = result
             output.write('tag=V' + version + '\n')
             output.write('codename=' + codename[0] + '\n')
-            major_minor = '.'.join(version.split('.')[:2])
-            output.write('release_branch=release/' + major_minor + '.x\n')
+            output.write('release_branch=v' + version + '-release\n')
             Path('release-notes.md').write_text(notes, encoding='utf-8')
