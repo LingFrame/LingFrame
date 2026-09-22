@@ -356,6 +356,51 @@ class ContractRoutingServiceTest {
         }
     }
 
+    @Nested
+    @DisplayName("整表发布 provider 权重")
+    class ReplaceProviderWeights {
+
+        @Test
+        @DisplayName("一次替换完整覆盖表并返回新修订")
+        void replacesWholeSnapshot() {
+            providerWeightRouter.setProviderWeight("svc-a", "obsolete:v1", 30);
+            String revision = providerWeightRouter.getWeightSnapshot("svc-a").getRevision();
+            Map<String, Integer> weights = new HashMap<>();
+            weights.put("lingcore-app", 90);
+            weights.put("user-ling:2.0.0", 10);
+
+            ContractRoutingDTO result = service.replaceProviderWeights("svc-a", revision, weights);
+
+            assertNotEquals(revision, result.getPolicyRevision());
+            assertEquals(weights, providerWeightRouter.getOverrideWeights("svc-a"));
+            assertEquals(result.getPolicyRevision(), providerWeightRouter.getWeightSnapshot("svc-a").getRevision());
+        }
+
+        @Test
+        @DisplayName("过期修订拒绝发布且不改变当前策略")
+        void rejectsStaleRevisionWithoutMutation() {
+            providerWeightRouter.setProviderWeight("svc-a", "current:v1", 60);
+            String staleRevision = providerWeightRouter.getWeightSnapshot("svc-a").getRevision();
+            providerWeightRouter.setProviderWeight("svc-a", "current:v1", 70);
+
+            assertThrows(ConcurrentModificationException.class,
+                    () -> service.replaceProviderWeights("svc-a", staleRevision,
+                            Collections.singletonMap("current:v1", 10)));
+            assertEquals(Integer.valueOf(70), providerWeightRouter.getOverrideWeight("svc-a", "current:v1"));
+        }
+
+        @Test
+        @DisplayName("空表清除全部覆盖")
+        void emptyTableClearsOverrides() {
+            providerWeightRouter.setProviderWeight("svc-a", "old:v1", 100);
+            String revision = providerWeightRouter.getWeightSnapshot("svc-a").getRevision();
+
+            service.replaceProviderWeights("svc-a", revision, Collections.emptyMap());
+
+            assertTrue(providerWeightRouter.getOverrideWeights("svc-a").isEmpty());
+        }
+    }
+
     @Test
     @DisplayName("查询中途权重更新时各行来自同一个覆盖快照")
     void queryPinsOneSnapshot() {

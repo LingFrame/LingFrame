@@ -2,6 +2,7 @@ package com.lingframe.dashboard.controller;
 
 import com.lingframe.dashboard.dto.ApiResponse;
 import com.lingframe.dashboard.dto.ContractRoutingDTO;
+import com.lingframe.dashboard.dto.ContractRoutingPublishRequest;
 import com.lingframe.dashboard.dto.ContractStressStepDTO;
 import com.lingframe.dashboard.service.ContractRoutingService;
 import com.lingframe.dashboard.service.SimulateService;
@@ -62,6 +63,40 @@ class ContractRoutingControllerTest {
         ApiResponse<ContractRoutingDTO> resp = controller.setProviderWeight("svc-a", body);
         assertTrue(resp.isSuccess());
         verify(service).setProviderWeight("svc-a", "user-ling:1.0.0", 60);
+    }
+
+    @Test
+    @DisplayName("按修订号原子发布完整权重策略")
+    void replaceProviderWeights() {
+        ContractRoutingDTO dto = ContractRoutingDTO.builder()
+                .contractId("svc-a")
+                .policyRevision("epoch:2:svc-a")
+                .build();
+        when(service.replaceProviderWeights(eq("svc-a"), eq("epoch:1:svc-a"), anyMap()))
+                .thenReturn(dto);
+
+        Map<String, Integer> weights = new LinkedHashMap<>();
+        weights.put("lingcore-app", 90);
+        weights.put("user-ling:2.0.0", 10);
+        ApiResponse<ContractRoutingDTO> response = controller.replaceProviderWeights(
+                "svc-a", new ContractRoutingPublishRequest("epoch:1:svc-a", weights));
+
+        assertTrue(response.isSuccess());
+        assertEquals("epoch:2:svc-a", response.getData().getPolicyRevision());
+        verify(service).replaceProviderWeights("svc-a", "epoch:1:svc-a", weights);
+    }
+
+    @Test
+    @DisplayName("修订号过期时拒绝整次权重发布")
+    void replaceProviderWeightsRejectsStaleRevision() {
+        when(service.replaceProviderWeights(anyString(), anyString(), anyMap()))
+                .thenThrow(new ConcurrentModificationException("stale"));
+
+        ApiResponse<ContractRoutingDTO> response = controller.replaceProviderWeights(
+                "svc-a", new ContractRoutingPublishRequest("old", Collections.emptyMap()));
+
+        assertFalse(response.isSuccess());
+        assertTrue(response.getMessage().contains("修订已过期"));
     }
 
     @Test

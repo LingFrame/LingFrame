@@ -16,6 +16,7 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
+import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -94,7 +95,8 @@ public class ContractRoutingService {
     public ContractRoutingDTO getContractRouting(String contractId) {
         List<ProviderDescriptor> providers = lingServiceRegistry.getProvidersByContractId(contractId);
         List<ProviderWeightDTO> providerDtos = new ArrayList<>(providers.size());
-        Map<String, Integer> overrides = providerWeightRouter.getWeightSnapshot(contractId).getWeights();
+        ProviderWeightSnapshot snapshot = providerWeightRouter.getWeightSnapshot(contractId);
+        Map<String, Integer> overrides = snapshot.getWeights();
 
         int coreEffective = 0;
         int lingEffective = 0;
@@ -122,6 +124,7 @@ public class ContractRoutingService {
 
         return ContractRoutingDTO.builder()
                 .contractId(contractId)
+                .policyRevision(snapshot.getRevision())
                 .providers(providerDtos)
                 .multiProvider(providers.size() >= 2)
                 .coreEffectiveWeight(coreEffective)
@@ -154,6 +157,38 @@ public class ContractRoutingService {
         log.info("[ContractRouting] Weight updated: contract=[{}], provider=[{}], weight=[{}]",
                 contractId, providerKey, weight);
         persistWeights(contractId);
+    }
+
+    /**
+     * 按修订号一次替换某契约的完整权重覆盖表。
+     * <p>
+     * 运行时先发布不可变快照，再进行控制面持久化；修订失配时整次操作拒绝，
+     * 不会留下部分权重。未列出的 provider 恢复注册时权重，空表清除全部覆盖。
+     *
+     * @param contractId 契约 ID
+     * @param expectedRevision 最近读取到的策略修订号
+     * @param weights 完整 provider 覆盖表
+     * @return 发布后的完整路由视图
+     * @throws IllegalArgumentException 参数为空或权重非法
+     * @throws ConcurrentModificationException 修订号已过期
+     */
+    public ContractRoutingDTO replaceProviderWeights(String contractId, String expectedRevision,
+            Map<String, Integer> weights) {
+        if (contractId == null || contractId.trim().isEmpty()) {
+            throw new IllegalArgumentException("contractId must not be blank");
+        }
+        if (expectedRevision == null || expectedRevision.trim().isEmpty()) {
+            throw new IllegalArgumentException("expectedRevision must not be blank");
+        }
+        if (weights == null) {
+            throw new IllegalArgumentException("weights must not be null");
+        }
+        ProviderWeightSnapshot published = providerWeightRouter.replaceProviderWeights(
+                contractId, expectedRevision, weights);
+        log.info("[ContractRouting] Weight snapshot published: contract=[{}], revision=[{}], providers=[{}]",
+                contractId, published.getRevision(), weights.size());
+        persistWeights(contractId);
+        return getContractRouting(contractId);
     }
 
     /**

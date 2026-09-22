@@ -2,6 +2,7 @@ package com.lingframe.dashboard.controller;
 
 import com.lingframe.dashboard.dto.ApiResponse;
 import com.lingframe.dashboard.dto.ContractRoutingDTO;
+import com.lingframe.dashboard.dto.ContractRoutingPublishRequest;
 import com.lingframe.dashboard.dto.ContractStressStepDTO;
 import com.lingframe.dashboard.service.ContractRoutingService;
 import com.lingframe.dashboard.service.SimulateService;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.ConcurrentModificationException;
 
 /**
  * 契约路由策略控制器。
@@ -95,6 +97,33 @@ public class ContractRoutingController {
         } catch (Exception e) {
             log.error("Failed to set provider weight for: {}", contractId, e);
             return ApiResponse.error("权重更新失败", e);
+        }
+    }
+
+    /**
+     * 按修订号一次替换某契约的完整 provider 权重表。
+     * <p>
+     * 生产发布入口必须使用整表快照，避免页面逐项写入时暴露混合策略。
+     */
+    @PutMapping("/{contractId:.+}/weights")
+    public ApiResponse<ContractRoutingDTO> replaceProviderWeights(
+            @PathVariable String contractId,
+            @RequestBody ContractRoutingPublishRequest request) {
+        try {
+            if (request == null) {
+                return ApiResponse.error("权重策略请求不能为空");
+            }
+            ContractRoutingDTO result = contractRoutingService.replaceProviderWeights(
+                    contractId, request.getExpectedRevision(), request.getWeights());
+            return ApiResponse.ok("权重策略已原子发布", result);
+        } catch (ConcurrentModificationException e) {
+            log.info("Weight policy revision conflict for contract: {}", contractId);
+            return ApiResponse.error("权重策略修订已过期，请重新读取后发布");
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.error("权重策略发布失败: " + e.getMessage());
+        } catch (Exception e) {
+            log.error("Failed to replace provider weights for: {}", contractId, e);
+            return ApiResponse.error("权重策略发布失败，请稍后重试");
         }
     }
 

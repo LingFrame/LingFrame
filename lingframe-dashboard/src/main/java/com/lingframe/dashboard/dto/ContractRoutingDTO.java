@@ -22,6 +22,9 @@ public class ContractRoutingDTO {
     /** 契约 ID（裸契约名或短 ID） */
     private String contractId;
 
+    /** 当前运行期覆盖快照的修订号，用于下一次整表发布的并发校验。 */
+    private String policyRevision;
+
     /** 提供方列表（含权重信息） */
     private List<ProviderWeightDTO> providers;
 
