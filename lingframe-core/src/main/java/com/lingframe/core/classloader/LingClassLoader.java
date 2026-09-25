@@ -4,8 +4,10 @@ import com.lingframe.core.exception.ClassLoaderException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.net.URLConnection;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -88,13 +90,36 @@ public class LingClassLoader extends URLClassLoader {
         super(urls, parent);
         this.lingId = lingId;
 
-        // 不修改 URLConnection 的 JVM 全局缓存默认值：JDK 8 没有协议级
-        // setDefaultUseCaches(String, boolean)，而全局开关会影响 Web/HTTP 连接。
-        // URLClassLoader.close() 会关闭本加载器持有的 JarFile，close() 之后再由
-        // cleanupInternalCaches() 切断 URLClassPath 引用，保持 JDK 8/17 双栈一致。
+        disableJarUrlCaching();
 
         log.debug("[{}] ClassLoader created with {} URLs", lingId, urls.length);
         ALIVE_COUNT.incrementAndGet();
+    }
+
+    /**
+     * 关闭 Jar URL 缓存，兼容 JDK 8 与 JDK 9+。
+     *
+     * <p>协议级重载在 JDK 8 中不存在，因此只能通过反射探测；JDK 8
+     * fallback 保留原有连接级设置，避免源码链接到高版本 API。</p>
+     */
+    private static void disableJarUrlCaching() {
+        try {
+            Method protocolDefault = URLConnection.class.getMethod(
+                    "setDefaultUseCaches", String.class, boolean.class);
+            protocolDefault.invoke(null, "jar", false);
+            return;
+        } catch (NoSuchMethodException ignored) {
+            // JDK 8 没有协议级重载，走兼容路径。
+        } catch (ReflectiveOperationException | SecurityException error) {
+            log.debug("Protocol-level jar cache configuration is unavailable", error);
+        }
+
+        try {
+            URLConnection connection = new URL("jar:file://dummy.jar!/").openConnection();
+            connection.setDefaultUseCaches(false);
+        } catch (IOException | SecurityException error) {
+            log.debug("Failed to configure jar URL cache fallback", error);
+        }
     }
 
     /**
