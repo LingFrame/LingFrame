@@ -48,7 +48,7 @@
     </distributionManagement>
 
     <properties>
-        <revision>0.4.6</revision>
+        <revision>0.4.7</revision>
         <gpg.executable>gpg</gpg.executable>
     </properties>
 

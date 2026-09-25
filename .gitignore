@@ -61,6 +61,8 @@ lingframe-benchmark/develop
 /docs/release/*
 !/docs/release/0.4.6-release-notes.md
 !/docs/release/0.4.6-release-notes.en.md
+!/docs/release/0.4.7-release-notes.md
+!/docs/release/0.4.7-release-notes.en.md
 /tools
 lingframe-dashboard/src/main/resources/static/update_css.bat
 lingframe-dashboard/src/main/resources/static/tailwindcss.exe
