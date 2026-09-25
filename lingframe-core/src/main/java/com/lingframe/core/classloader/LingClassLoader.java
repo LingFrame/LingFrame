@@ -6,7 +6,6 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.net.URLConnection;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -89,20 +88,10 @@ public class LingClassLoader extends URLClassLoader {
         super(urls, parent);
         this.lingId = lingId;
 
-        // 🔥 关键修复：关闭 URLConnection 的缓存机制
-        // 在 Windows 平台上，如果底层 JarURLConnection 启用了缓存，
-        // 即便调用了 URLClassLoader.close()，文件句柄依然可能被 JVM 占用，导致无法覆盖重装。
-        // ⚠️ 注意副作用：此设置会修改 JVM 全局的 jar 协议缓存默认值。
-        // 如果灵核自身或其他组件（如某些 Web 容器）强依赖 JAR URL 缓存来提升性能，
-        // 可能会受到轻微影响。但为保证灵元的热重装能力，关闭缓存是必需的折衷。
-        try {
-            // 使用协议级 API 关闭后续 JarURLConnection 的默认缓存。
-            // 仅对一个临时连接调用 setDefaultUseCaches(false) 不会影响 URLClassLoader
-            // 后续打开的真实 Jar 连接，Windows 下仍可能残留 JarFile 文件句柄。
-            URLConnection.setDefaultUseCaches("jar", false);
-        } catch (Throwable t) {
-            log.warn("Failed to set default use caches to false for 'jar' protocol", t);
-        }
+        // 不修改 URLConnection 的 JVM 全局缓存默认值：JDK 8 没有协议级
+        // setDefaultUseCaches(String, boolean)，而全局开关会影响 Web/HTTP 连接。
+        // URLClassLoader.close() 会关闭本加载器持有的 JarFile，close() 之后再由
+        // cleanupInternalCaches() 切断 URLClassPath 引用，保持 JDK 8/17 双栈一致。
 
         log.debug("[{}] ClassLoader created with {} URLs", lingId, urls.length);
         ALIVE_COUNT.incrementAndGet();
