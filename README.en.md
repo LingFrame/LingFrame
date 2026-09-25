@@ -8,7 +8,7 @@
   <a href="https://central.sonatype.com/artifact/cn.lingframe/lingframe-bom">
     <img src="https://img.shields.io/maven-central/v/cn.lingframe/lingframe-bom.svg?color=blue" alt="Maven Central">
   </a>
-    <img src="https://img.shields.io/badge/Version-0.4.6-blue" alt="Version">
+    <img src="https://img.shields.io/badge/Version-0.4.7-blue" alt="Version">
   <img src="https://img.shields.io/badge/Stage-Pre--1.0-yellow" alt="Stage">
   <img src="https://img.shields.io/badge/License-Apache_2.0-blue" alt="License">
   <img src="https://img.shields.io/badge/Java-8_(default)_%7C_17-orange" alt="Java">
@@ -238,7 +238,7 @@ With `classloader-cache-mode=false`, the CI test uses a 3×3 Fake / MySQL / Kafk
 - Storage governance mainly covers Spring-injected DataSources, not every hand-rolled JDBC path;
 - Dangerous-API scanning is load-time signaling, not a full JVM security sandbox;
 - Primary verification path (**examples default**): Spring Boot 2.7 + JDK 8; Spring Boot 3 + JDK 17 is the support line (runtime dual starters + dashboard single-GAV matrix sources; see [DEVELOPMENT_MANUAL](docs/en/development-manual.md) §5.2);
-- **0.4.6 is Pre-1.0**: evaluate with examples and [production hardening](docs/en/production-hardening.md) before production.
+- **0.4.7 is Pre-1.0**: evaluate with examples and [production hardening](docs/en/production-hardening.md) before production.
 
 ---
 
@@ -252,7 +252,7 @@ LingFrame is officially published on **Maven Central**. You can directly import 
     <dependency>
       <groupId>cn.lingframe</groupId>
       <artifactId>lingframe-bom</artifactId>
-      <version>0.4.6</version>
+      <version>0.4.7</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>

@@ -104,7 +104,9 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
                 if (routed != null) {
                     request.setAttribute(WebRequestKeys.TARGET_VERSION, routed.getVersion());
                 }
-                admission = new ServletInvocationAdmission(InvocationAdmission.acquire(ctx));
+                final String governedLingId = lingId;
+                admission = new ServletInvocationAdmission(InvocationAdmission.acquire(ctx), response,
+                        failure -> reportOutcome(governedLingId, startNanos, failure));
             } catch (LingInvocationException e) {
                 if (e.getKind() == LingInvocationException.ErrorKind.SECURITY_REJECTED) {
                     log.warn("[Governance] Security rejected: {} -> {}",
@@ -124,7 +126,7 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
             throw t;
         } finally {
             if (admission != null) {
-                admission.close();
+                admission.complete(downstreamError);
             }
             recordWebMetrics(request, response, ctx, lingId, isLingRequest, startNanos, downstreamError);
             if (ctx != null) {
@@ -139,6 +141,18 @@ public class LingWebGovernanceFilter extends OncePerRequestFilter {
 
     private WebRequestFacade adaptRequest(HttpServletRequest request) {
         return new ServletWebRequestFacade(request);
+    }
+
+    private void reportOutcome(String lingId, long startNanos, Throwable failure) {
+        if (failure instanceof Error) {
+            return;
+        }
+        try {
+            pipelineEngine.reportOutcome(lingId, failure == null,
+                    Math.max(0L, System.nanoTime() - startNanos), failure);
+        } catch (RuntimeException reportFailure) {
+            log.debug("Failed to report Web invocation outcome for ling {}", lingId, reportFailure);
+        }
     }
 
     private void handleGovernanceFailure(HttpServletResponse response,

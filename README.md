@@ -8,7 +8,7 @@
   <a href="https://central.sonatype.com/artifact/cn.lingframe/lingframe-bom">
     <img src="https://img.shields.io/maven-central/v/cn.lingframe/lingframe-bom.svg?color=blue" alt="Maven Central">
   </a>
-    <img src="https://img.shields.io/badge/Version-0.4.6-blue" alt="Version">
+    <img src="https://img.shields.io/badge/Version-0.4.7-blue" alt="Version">
   <img src="https://img.shields.io/badge/Stage-Pre--1.0-yellow" alt="Stage">
   <img src="https://img.shields.io/badge/License-Apache_2.0-blue" alt="License">
   <img src="https://img.shields.io/badge/Java-8_(默认)_%7C_17-orange" alt="Java">
@@ -242,7 +242,7 @@ curl http://localhost:8888/user-ling/user/listUsers
 - 存储治理主要覆盖 Spring 注入的 `DataSource`，手写的原生 JDBC 连接无法拦截；
 - 危险 API 扫描是加载阶段的提醒信号，并不是 JVM 级别的完整安全沙箱；
 - 验证主路径为 **Spring Boot 2.7 + JDK 8**（示例默认）；Spring Boot 3 + JDK 17 为支持线；
-- **0.4.6 版本仍处于 Pre-1.0 阶段**：建议上线前先在测试环境充分评估，并对照 [生产配置清单](docs/zh-CN/production-hardening.md) 进行核验。
+- **0.4.7 版本仍处于 Pre-1.0 阶段**：建议上线前先在测试环境充分评估，并对照 [生产配置清单](docs/zh-CN/production-hardening.md) 进行核验。
 
 ---
 
@@ -258,7 +258,7 @@ LingFrame 已正式发布至 **Maven Central** 全球中央仓库，无需拉取
     <dependency>
       <groupId>cn.lingframe</groupId>
       <artifactId>lingframe-bom</artifactId>
-      <version>0.4.6</version>
+      <version>0.4.7</version>
       <type>pom</type>
       <scope>import</scope>
     </dependency>

@@ -43,6 +43,15 @@ class RuntimeCoordinatorTest {
     class RegisterAndQuery {
 
         @Test
+        @DisplayName("重复启动和停止协调器保持幂等")
+        void startAndStopAreIdempotent() {
+            assertDoesNotThrow(() -> coordinator.start());
+            assertDoesNotThrow(() -> coordinator.stop());
+            assertDoesNotThrow(() -> coordinator.stop());
+            assertDoesNotThrow(() -> coordinator.start());
+        }
+
+        @Test
         @DisplayName("注册灵元后状态机初始为 INACTIVE")
         void registerInitialInactive() {
             StateMachine<RuntimeStatus> fsm = coordinator.register("ling-1");

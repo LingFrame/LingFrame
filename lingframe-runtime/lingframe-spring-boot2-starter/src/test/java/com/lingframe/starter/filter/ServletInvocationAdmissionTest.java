@@ -15,6 +15,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.atomic.AtomicReference;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -51,6 +53,20 @@ class ServletInvocationAdmissionTest {
         assertSame(request, adapter.wrap(request, mock(HttpServletResponse.class)));
         adapter.close();
         adapter.close();
+        verify(instance, times(1)).completeInvocation(1L);
+    }
+
+    @Test
+    @DisplayName("同步完成回调真实业务结果且只执行一次")
+    void synchronousOutcomeCallback() {
+        AtomicReference<Throwable> outcome = new AtomicReference<>();
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        when(response.getStatus()).thenReturn(200);
+        ServletInvocationAdmission observed =
+                new ServletInvocationAdmission(lease, response, outcome::set);
+        observed.close();
+        observed.close();
+        assertNull(outcome.get());
         verify(instance, times(1)).completeInvocation(1L);
     }
 

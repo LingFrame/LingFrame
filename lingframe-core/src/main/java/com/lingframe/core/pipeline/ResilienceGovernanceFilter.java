@@ -155,11 +155,12 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
             throw new LingInvocationException(fqsid, LingInvocationException.ErrorKind.CIRCUIT_OPEN);
         }
 
-        // 3. 执行并记录结果
+        // 3. NORMAL 模式由 Pipeline 结算；GOVERN_ONLY 只做准入，真实结果由 reportOutcome 唯一回灌。
+        final boolean governOnly = ctx.execution().getMode().isGovernOnly();
         long startNanos = System.nanoTime();
         try {
             Object result = chain.doFilter(ctx);
-            if (breaker != null) {
+            if (breaker != null && !governOnly) {
                 long durationNanos = System.nanoTime() - startNanos;
                 breaker.onSuccess(durationNanos, TimeUnit.NANOSECONDS);
 
@@ -179,7 +180,7 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
             // 形成「治理拒绝反噬治理」的倒挂。判定复用 ErrorKind.isGovernanceRejection()：
             // 仅治理拒绝被排除喂料，INVOKE_ERROR / TIMEOUT / CLASSLOADER_ERROR 等真实下游
             // 故障仍正常计入失败率，熔断判定准确性不受影响。
-            if (breaker != null && !(t instanceof LingInvocationException
+            if (breaker != null && !governOnly && !(t instanceof LingInvocationException
                     && ((LingInvocationException) t).getKind().isGovernanceRejection())) {
                 long durationNanos = System.nanoTime() - startNanos;
                 breaker.onError(durationNanos, TimeUnit.NANOSECONDS, t);
@@ -336,9 +337,22 @@ public class ResilienceGovernanceFilter implements LingInvocationFilter {
         }
         if (success) {
             holder.breaker.onSuccess(durationNanos, TimeUnit.NANOSECONDS);
+            tryRecoverFromDegraded(lingId, holder.breaker);
         } else {
             holder.breaker.onError(durationNanos, TimeUnit.NANOSECONDS, error);
+            if (holder.breaker.getState() == CircuitBreaker.State.OPEN) {
+                transitionToDegraded(lingId, runtimeVersion(lingId));
+            }
         }
+    }
+
+    private String runtimeVersion(String lingId) {
+        LingRuntime runtime = lingRepository != null ? lingRepository.getRuntime(lingId) : null;
+        if (runtime == null || runtime.getInstancePool() == null) {
+            return "virtual";
+        }
+        String version = runtime.getInstancePool().getVersion();
+        return version != null ? version : "virtual";
     }
 
     boolean hasLimiter(String lingId) {

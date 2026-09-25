@@ -165,7 +165,10 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
             publishTrace(traceId, lingId,
                     "← " + (operation != null ? operation : serviceFQSID) + " (" + costMs + "ms)",
                     "OUT", depth);
-            recordMetrics(ctx, start, true, null);
+            // GOVERN_ONLY 只执行治理准入，不代表真实业务成功；真实结果由外部 reportOutcome 回灌。
+            if (!ctx.execution().getMode().isGovernOnly()) {
+                recordMetrics(ctx, start, true, null);
+            }
             return result;
         } catch (Error e) {
             // Error（OOM / StackOverflow）跳过指标记录副作用直接透传，
@@ -176,7 +179,9 @@ public class TrafficMetricsFilter implements LingInvocationFilter {
             publishTrace(traceId, lingId,
                     "✗ " + (operation != null ? operation : serviceFQSID) + " (" + costMs + "ms) - " + t.getClass().getSimpleName(),
                     "ERROR", depth);
-            recordMetrics(ctx, start, false, t);
+            if (!ctx.execution().getMode().isGovernOnly()) {
+                recordMetrics(ctx, start, false, t);
+            }
             throw t;
         } finally {
             LingCallContext.decreaseDepth();

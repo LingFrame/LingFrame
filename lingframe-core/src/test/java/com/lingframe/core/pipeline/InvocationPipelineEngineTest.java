@@ -62,6 +62,27 @@ class InvocationPipelineEngineTest {
         }
 
         @Test
+        @DisplayName("GOVERN_ONLY 不把治理探针记入 Provider 业务指标")
+        void governOnlyDoesNotRecordProviderBusinessMetrics() {
+            ProviderMetricsCollector collector = new ProviderMetricsCollector();
+            InvocationPipelineEngine observedEngine = new InvocationPipelineEngine(registry, collector);
+            when(registry.getOrderedFilters()).thenReturn(Collections.singletonList(
+                    (LingInvocationFilter) (ctx, chain) -> {
+                        ctx.setTargetLingId("ling-a");
+                        return null;
+                    }
+            ));
+
+            InvocationContext ctx = InvocationContext.obtain();
+            ctx.setServiceFQSID("ling-a:Service");
+            ctx.execution().setMode(InvocationExecutionMode.GOVERN_ONLY);
+
+            observedEngine.invoke(ctx);
+
+            assertTrue(collector.getStatsByContract("Service").isEmpty());
+        }
+
+        @Test
         @DisplayName("invoke 执行过滤器链并返回结果")
         void invokeExecutesChain() throws Throwable {
             when(registry.getOrderedFilters()).thenReturn(Collections.singletonList(

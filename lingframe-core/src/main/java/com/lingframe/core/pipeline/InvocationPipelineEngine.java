@@ -33,7 +33,7 @@ public class InvocationPipelineEngine {
     public Object invoke(InvocationContext ctx) {
         // 将上下文挂载为当前线程活跃上下文，使 Pipeline 内部（含 wrap() 跨线程传播）可通过 current() 发现
         InvocationContext prev = ctx.attach();
-        long startTime = providerMetricsCollector != null ? System.currentTimeMillis() : 0L;
+        long startTime = providerMetricsCollector != null ? System.nanoTime() : 0L;
         boolean success = false;
         try {
             LingFilterChain chain = new DefaultFilterChain(registry.getOrderedFilters());
@@ -51,7 +51,8 @@ public class InvocationPipelineEngine {
                     ctx.getServiceFQSID(), LingInvocationException.ErrorKind.INTERNAL_ERROR, e);
         } finally {
             if (providerMetricsCollector != null) {
-                recordProviderMetrics(ctx, success, System.currentTimeMillis() - startTime);
+                long durationMs = Math.max(0L, (System.nanoTime() - startTime) / 1_000_000L);
+                recordProviderMetrics(ctx, success, durationMs);
             }
             InvocationContext.detach(prev);
         }
@@ -64,6 +65,12 @@ public class InvocationPipelineEngine {
      * contractId 取 FQSID 冒号后部分；裸 contractId 场景下取 FQSID 本身。
      */
     private void recordProviderMetrics(InvocationContext ctx, boolean success, long durationMs) {
+        // GOVERN_ONLY 只代表治理准入探针，不代表真实业务调用结果。
+        // 真实结果由外部适配层在业务完成后回灌；此处若继续记录会把探针
+        // 统计成 Provider 成功调用，污染控制面业务指标。
+        if (ctx.execution().getMode().isGovernOnly()) {
+            return;
+        }
         String lingId = ctx.getTargetLingId();
         String contractId = extractContractId(ctx.getServiceFQSID());
         if (contractId == null || lingId == null) {

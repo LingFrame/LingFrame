@@ -4,6 +4,7 @@ import com.lingframe.core.exception.ClassLoaderException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.net.URLConnection;
@@ -89,23 +90,36 @@ public class LingClassLoader extends URLClassLoader {
         super(urls, parent);
         this.lingId = lingId;
 
-        // 🔥 关键修复：关闭 URLConnection 的缓存机制
-        // 在 Windows 平台上，如果底层 JarURLConnection 启用了缓存，
-        // 即便调用了 URLClassLoader.close()，文件句柄依然可能被 JVM 占用，导致无法覆盖重装。
-        // ⚠️ 注意副作用：此设置会修改 JVM 全局的 jar 协议缓存默认值。
-        // 如果灵核自身或其他组件（如某些 Web 容器）强依赖 JAR URL 缓存来提升性能，
-        // 可能会受到轻微影响。但为保证灵元的热重装能力，关闭缓存是必需的折衷。
-        try {
-            // 为兼容 JDK 8：该版本没有 setDefaultUseCaches(String protocol, boolean defaultVal)
-            // 必须创建一个真实的 jar URL 连接实例来关闭整个 JVM 级别的 jar 缓存默认值
-            URLConnection connection = new URL("jar:file://dummy.jar!/").openConnection();
-            connection.setDefaultUseCaches(false);
-        } catch (Throwable t) {
-            log.warn("Failed to set default use caches to false for 'jar' protocol", t);
-        }
+        disableJarUrlCaching();
 
         log.debug("[{}] ClassLoader created with {} URLs", lingId, urls.length);
         ALIVE_COUNT.incrementAndGet();
+    }
+
+    /**
+     * 关闭 Jar URL 缓存，兼容 JDK 8 与 JDK 9+。
+     *
+     * <p>协议级重载在 JDK 8 中不存在，因此只能通过反射探测；JDK 8
+     * fallback 保留原有连接级设置，避免源码链接到高版本 API。</p>
+     */
+    private static void disableJarUrlCaching() {
+        try {
+            Method protocolDefault = URLConnection.class.getMethod(
+                    "setDefaultUseCaches", String.class, boolean.class);
+            protocolDefault.invoke(null, "jar", false);
+            return;
+        } catch (NoSuchMethodException ignored) {
+            // JDK 8 没有协议级重载，走兼容路径。
+        } catch (ReflectiveOperationException | SecurityException error) {
+            log.debug("Protocol-level jar cache configuration is unavailable", error);
+        }
+
+        try {
+            URLConnection connection = new URL("jar:file://dummy.jar!/").openConnection();
+            connection.setDefaultUseCaches(false);
+        } catch (IOException | SecurityException error) {
+            log.debug("Failed to configure jar URL cache fallback", error);
+        }
     }
 
     /**

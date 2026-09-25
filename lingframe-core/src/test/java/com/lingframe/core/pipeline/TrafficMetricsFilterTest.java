@@ -179,6 +179,25 @@ class TrafficMetricsFilterTest {
     class MetricsRecording {
 
         @Test
+        @DisplayName("GOVERN_ONLY 只做准入，不记录真实成功或失败")
+        void governOnlyDoesNotRecordBusinessMetrics() throws Throwable {
+            MetricsCollector collector = mock(MetricsCollector.class);
+            LingHealthMetrics healthMetrics = mock(LingHealthMetrics.class);
+            when(collector.getOrCreate(anyString())).thenReturn(healthMetrics);
+            when(collector.getOrCreate(anyString(), any())).thenReturn(healthMetrics);
+
+            TrafficMetricsFilter filter = new TrafficMetricsFilter(null, collector);
+            InvocationContext ctx = InvocationContext.obtain();
+            ctx.setServiceFQSID("ling-1:Service");
+            ctx.execution().setMode(InvocationExecutionMode.GOVERN_ONLY);
+
+            filter.doFilter(ctx, c -> "admitted");
+
+            verify(healthMetrics, never()).recordSuccess(anyLong());
+            verify(healthMetrics, never()).recordFailure(anyLong(), anyBoolean());
+        }
+
+        @Test
         @DisplayName("成功调用记录指标")
         void successRecordsMetrics() throws Throwable {
             MetricsCollector collector = mock(MetricsCollector.class);

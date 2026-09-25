@@ -10,12 +10,15 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /**
  * 外层执行入口持有的实例准入凭据，覆盖治理链之后的实际业务区间。
@@ -79,37 +82,80 @@ public final class InvocationAdmission implements AutoCloseable {
      * @return 原始结果或保留 Future 语义的跟踪代理
      */
     public static Object bindAsync(Object result, InvocationAdmission admission) {
+        return bindAsync(result, admission, null);
+    }
+
+    /**
+     * 将准入凭据绑定到异步结果，并在真实业务结果确定时回调一次。
+     * <p>
+     * 适配层可据此把 GOVERN_ONLY 的真实结果回灌到熔断器，避免在入口 finally
+     * 中把尚未完成的异步任务误判为成功。
+     *
+     * @param result          业务返回值
+     * @param admission       当前准入凭据
+     * @param outcomeReporter 结果回调；参数为 null 表示成功，否则为失败原因
+     * @return 原始结果或保留 Future 语义的跟踪代理
+     */
+    public static Object bindAsync(Object result, InvocationAdmission admission,
+                                   Consumer<Throwable> outcomeReporter) {
         Objects.requireNonNull(admission, "admission");
+        AtomicBoolean outcomeReported = new AtomicBoolean(false);
+        Consumer<Throwable> reportOnce = failure -> {
+            if (outcomeReporter != null && outcomeReported.compareAndSet(false, true)) {
+                outcomeReporter.accept(failure);
+            }
+        };
         if (result instanceof CompletionStage) {
             try {
-                ((CompletionStage<?>) result).whenComplete((value, failure) -> admission.close());
+                ((CompletionStage<?>) result).whenComplete((value, failure) -> {
+                    try {
+                        reportOnce.accept(failure);
+                    } finally {
+                        admission.close();
+                    }
+                });
             } catch (RuntimeException registrationFailure) {
-                admission.close();
+                try {
+                    reportOnce.accept(registrationFailure);
+                } finally {
+                    admission.close();
+                }
                 throw registrationFailure;
             }
             return result;
         }
         if (result instanceof Future) {
-            return new TrackingFuture<>((Future<?>) result, admission);
+            return new TrackingFuture<>((Future<?>) result, admission, reportOnce);
         }
-        admission.close();
+        try {
+            reportOnce.accept(null);
+        } finally {
+            admission.close();
+        }
         return result;
     }
 
     private static final class TrackingFuture<T> implements Future<T> {
         private final Future<?> delegate;
         private final InvocationAdmission admission;
+        private final Consumer<Throwable> outcomeReporter;
 
-        private TrackingFuture(Future<?> delegate, InvocationAdmission admission) {
+        private TrackingFuture(Future<?> delegate, InvocationAdmission admission,
+                               Consumer<Throwable> outcomeReporter) {
             this.delegate = delegate;
             this.admission = admission;
+            this.outcomeReporter = outcomeReporter;
             watchUntilDone();
         }
 
         private void watchUntilDone() {
             FUTURE_WATCHER.schedule(() -> {
                 if (delegate.isDone()) {
-                    admission.close();
+                    try {
+                        reportCompletion();
+                    } finally {
+                        admission.close();
+                    }
                 } else {
                     watchUntilDone();
                 }
@@ -119,33 +165,92 @@ public final class InvocationAdmission implements AutoCloseable {
         @SuppressWarnings("unchecked")
         private T value(Object value) {
             if (delegate.isDone()) {
-                admission.close();
+                try {
+                    reportCompletion();
+                } finally {
+                    admission.close();
+                }
             }
             return (T) value;
         }
 
         @Override public boolean cancel(boolean mayInterruptIfRunning) {
             boolean cancelled = delegate.cancel(mayInterruptIfRunning);
-            if (cancelled) admission.close();
+            if (cancelled) {
+                try {
+                    outcomeReporter.accept(new CancellationException("Future invocation cancelled"));
+                } finally {
+                    admission.close();
+                }
+            }
             return cancelled;
         }
         @Override public boolean isCancelled() { return delegate.isCancelled(); }
         @Override public boolean isDone() {
             boolean done = delegate.isDone();
-            if (done) admission.close();
+            if (done) {
+                try {
+                    reportCompletion();
+                } finally {
+                    admission.close();
+                }
+            }
             return done;
         }
         @Override public T get() throws InterruptedException, ExecutionException {
-            try { return value(delegate.get()); } catch (InterruptedException | ExecutionException e) {
-                if (delegate.isDone()) admission.close();
+            try { return value(delegate.get()); } catch (CancellationException e) {
+                try {
+                    reportCompletion();
+                } finally {
+                    admission.close();
+                }
+                throw e;
+            } catch (InterruptedException | ExecutionException e) {
+                if (delegate.isDone()) {
+                    try {
+                        reportCompletion();
+                    } finally {
+                        admission.close();
+                    }
+                }
                 throw e;
             }
         }
         @Override public T get(long timeout, TimeUnit unit)
                 throws InterruptedException, ExecutionException, TimeoutException {
-            try { return value(delegate.get(timeout, unit)); } catch (InterruptedException | ExecutionException e) {
-                if (delegate.isDone()) admission.close();
+            try { return value(delegate.get(timeout, unit)); } catch (CancellationException e) {
+                try {
+                    reportCompletion();
+                } finally {
+                    admission.close();
+                }
                 throw e;
+            } catch (InterruptedException | ExecutionException e) {
+                if (delegate.isDone()) {
+                    try {
+                        reportCompletion();
+                    } finally {
+                        admission.close();
+                    }
+                }
+                throw e;
+            }
+        }
+
+        private void reportCompletion() {
+            if (!delegate.isDone()) {
+                return;
+            }
+            try {
+                delegate.get();
+                outcomeReporter.accept(null);
+            } catch (CancellationException e) {
+                outcomeReporter.accept(e);
+            } catch (ExecutionException e) {
+                outcomeReporter.accept(e.getCause() != null ? e.getCause() : e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                outcomeReporter.accept(e);
             }
         }
     }

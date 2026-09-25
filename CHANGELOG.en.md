@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [V0.4.7] - 2026-09-26
+
+Version: `lingframe-dependencies` → `revision=0.4.7`.
+Codename: **Hanzhang** (a minor update on the 0.4 line; the existing codename is retained).
+
+Full release notes: [0.4.7 release notes](docs/release/0.4.7-release-notes.en.md).
+
+### Governance outcomes and lifecycle stability
+
+- Fixed `GOVERN_ONLY` counting an admission probe as a real business success or failure; adapters now report the real business outcome at termination so traffic metrics and circuit-breaker results are settled once.
+- Keep asynchronous admission leases until `CompletionStage` / `Future` termination, consistently handling success, failure, and cancellation with exactly-once outcome reporting.
+- Closed the circuit-breaker degraded and recovery loop so real failures enter degradation and a later reported success can recover the runtime state.
+- Made runtime coordinator start and stop idempotent, with listener rollback when startup is interrupted, preventing duplicate subscriptions and resource residue.
+- Fixed JAR cache handling for JDK 8 compatibility and kept the dual-stack build free from unsupported protocol-level APIs.
+
+### Publication artifact reliability
+
+- Explicitly exclude local Tailwind build tools, input stylesheets, and update scripts from Dashboard runtime and source artifacts, preventing oversized Maven Central publications.
+
 ## [V0.4.6] - 2026-09-22
 
 Version: `lingframe-dependencies` → `revision=0.4.6`.

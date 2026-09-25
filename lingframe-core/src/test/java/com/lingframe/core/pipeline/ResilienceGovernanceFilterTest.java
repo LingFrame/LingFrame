@@ -65,6 +65,27 @@ class ResilienceGovernanceFilterTest {
     class PassThroughTests {
 
         @Test
+        @DisplayName("GOVERN_ONLY 仅做准入，不在 Pipeline 内结算成功")
+        void governOnly_ShouldNotSettleBreakerOutcome() throws Throwable {
+            setupMocks(100, 1000);
+            context.execution().setMode(InvocationExecutionMode.GOVERN_ONLY);
+            when(filterChain.doFilter(context)).thenReturn(new Object());
+
+            filter.doFilter(context, filterChain);
+            assertTrue(filter.hasBreaker("demo-ling"));
+
+            for (int i = 0; i < 10; i++) {
+                filter.reportOutcome("demo-ling", false, 1_000_000L,
+                        new IOException("downstream unavailable"));
+            }
+
+            LingInvocationException cbEx = assertThrows(LingInvocationException.class,
+                    () -> filter.doFilter(context, filterChain));
+            assertEquals(LingInvocationException.ErrorKind.CIRCUIT_OPEN, cbEx.getKind());
+            verify(filterChain, times(1)).doFilter(context);
+        }
+
+        @Test
         @DisplayName("灵元关闭弹性治理时应直接透传并清理既有状态")
         void doFilter_WhenRuntimeResilienceDisabled_ShouldPassThrough() throws Throwable {
             context.setServiceFQSID("demo-ling:com.example.DemoService");

@@ -19,6 +19,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.longThat;
 
 /** AOP 治理完成后的最终准入及释放测试。 */
 @DisplayName("灵核 Bean 入口的最终准入")
@@ -96,6 +98,21 @@ class LingCoreBeanGovernanceInterceptorTest {
         assertEquals(1, instance.getActiveRequestCount());
         future.complete("ok");
         assertEquals(0, instance.getActiveRequestCount());
+        verify(engine).reportOutcome(eq("lingcore-app"), eq(true), longThat(value -> value >= 0L), isNull());
+    }
+
+    @Test
+    @DisplayName("Bean 同步业务异常回灌给熔断器")
+    void reportsSynchronousFailure() throws Throwable {
+        when(engine.invoke(any())).thenAnswer(call -> {
+            InvocationContext ctx = call.getArgument(0);
+            ctx.routing().setTargetInstance(instance);
+            return null;
+        });
+        IllegalStateException expected = new IllegalStateException("business failure");
+        when(invocation.proceed()).thenThrow(expected);
+        assertSame(expected, assertThrows(IllegalStateException.class, () -> interceptor.invoke(invocation)));
+        verify(engine).reportOutcome(eq("lingcore-app"), eq(false), longThat(value -> value >= 0L), same(expected));
     }
 
     @Test
