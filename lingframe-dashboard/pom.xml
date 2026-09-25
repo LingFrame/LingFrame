@@ -87,7 +87,32 @@
     </dependencies>
 
     <build>
+        <!--
+          前端构建工具只用于本地生成 CSS，不属于 Dashboard 运行时资源。
+          显式排除它们，避免被打进运行包或源码包，污染发布物体积。
+        -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <excludes>
+                    <exclude>**/tailwindcss.exe</exclude>
+                    <exclude>**/input.css</exclude>
+                    <exclude>**/update_css.bat</exclude>
+                </excludes>
+            </resource>
+        </resources>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>**/tailwindcss.exe</exclude>
+                        <exclude>**/input.css</exclude>
+                        <exclude>**/update_css.bat</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>build-helper-maven-plugin</artifactId>

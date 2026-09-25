@@ -35,7 +35,8 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
 
     // 状态
     private final AtomicReference<State> state = new AtomicReference<>(State.CLOSED);
-    private final AtomicLong stateTransitionTime = new AtomicLong(System.currentTimeMillis());
+    /** 使用单调时钟保存 OPEN/HALF_OPEN 间隔，避免系统校时影响熔断恢复。 */
+    private final AtomicLong stateTransitionNanos = new AtomicLong(System.nanoTime());
 
     // 统计 (环形缓冲区)
     private final boolean[] failureWindow;
@@ -109,10 +110,11 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
             return true;
 
         if (currentState == State.OPEN) {
-            long now = System.currentTimeMillis();
-            if (now - stateTransitionTime.get() > waitDurationInOpenStateMs) {
+            long now = System.nanoTime();
+            long waitNanos = TimeUnit.MILLISECONDS.toNanos(waitDurationInOpenStateMs);
+            if (now - stateTransitionNanos.get() > waitNanos) {
                 if (state.compareAndSet(State.OPEN, State.HALF_OPEN)) {
-                    stateTransitionTime.set(now);
+                    stateTransitionNanos.set(now);
                     successfulCallsInHalfOpenState.set(0);
                     halfOpenTrialCount.set(0);
                     log.info("[Breaker:{}] State changed: OPEN -> HALF_OPEN (Trial starts)", name);
@@ -220,7 +222,7 @@ public class SlidingWindowCircuitBreaker implements CircuitBreaker {
     private void transitionToOpen() {
         State oldState = state.get();
         if (state.compareAndSet(State.CLOSED, State.OPEN) || state.compareAndSet(State.HALF_OPEN, State.OPEN)) {
-            stateTransitionTime.set(System.currentTimeMillis());
+            stateTransitionNanos.set(System.nanoTime());
             publishStateEvent(oldState, State.OPEN);
         }
     }

@@ -96,10 +96,10 @@ public class LingClassLoader extends URLClassLoader {
         // 如果灵核自身或其他组件（如某些 Web 容器）强依赖 JAR URL 缓存来提升性能，
         // 可能会受到轻微影响。但为保证灵元的热重装能力，关闭缓存是必需的折衷。
         try {
-            // 为兼容 JDK 8：该版本没有 setDefaultUseCaches(String protocol, boolean defaultVal)
-            // 必须创建一个真实的 jar URL 连接实例来关闭整个 JVM 级别的 jar 缓存默认值
-            URLConnection connection = new URL("jar:file://dummy.jar!/").openConnection();
-            connection.setDefaultUseCaches(false);
+            // 使用协议级 API 关闭后续 JarURLConnection 的默认缓存。
+            // 仅对一个临时连接调用 setDefaultUseCaches(false) 不会影响 URLClassLoader
+            // 后续打开的真实 Jar 连接，Windows 下仍可能残留 JarFile 文件句柄。
+            URLConnection.setDefaultUseCaches("jar", false);
         } catch (Throwable t) {
             log.warn("Failed to set default use caches to false for 'jar' protocol", t);
         }

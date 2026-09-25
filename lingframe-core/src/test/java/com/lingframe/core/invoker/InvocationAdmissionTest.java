@@ -19,8 +19,11 @@ import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -107,6 +110,36 @@ class InvocationAdmissionTest {
         }
         instance.setAcceptNewRequests(false);
         assertThrows(LingInvocationException.class, () -> InvocationAdmission.acquire(ctx));
+    }
+
+    @Test
+    @DisplayName("异步业务终态只回调一次且成功结果回灌")
+    void completionStageReportsSuccessOnce() {
+        InvocationAdmission admission = InvocationAdmission.acquire(ctx);
+        CompletableFuture<String> future = new CompletableFuture<>();
+        AtomicInteger calls = new AtomicInteger();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        InvocationAdmission.bindAsync(future, admission, error -> {
+            calls.incrementAndGet();
+            failure.set(error);
+        });
+        future.complete("ok");
+        assertEquals(1, calls.get());
+        assertNull(failure.get());
+        assertEquals(0, instance.getActiveRequestCount());
+    }
+
+    @Test
+    @DisplayName("异步业务异常回灌原始失败且准入释放")
+    void completionStageReportsFailure() {
+        InvocationAdmission admission = InvocationAdmission.acquire(ctx);
+        CompletableFuture<String> future = new CompletableFuture<>();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        InvocationAdmission.bindAsync(future, admission, failure::set);
+        IllegalStateException expected = new IllegalStateException("downstream failure");
+        future.completeExceptionally(expected);
+        assertSame(expected, failure.get());
+        assertEquals(0, instance.getActiveRequestCount());
     }
 
     @ParameterizedTest

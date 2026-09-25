@@ -87,9 +87,13 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
 
             // 治理通过，执行业务方法
             InvocationAdmission admission = InvocationAdmission.acquire(ctx);
+            final String governedLingId = ctx.getTargetLingId();
+            final long businessStartNanos = System.nanoTime();
             try {
-                return InvocationAdmission.bindAsync(invocation.proceed(), admission);
+                return InvocationAdmission.bindAsync(invocation.proceed(), admission,
+                        failure -> reportOutcome(governedLingId, businessStartNanos, failure));
             } catch (Throwable failure) {
+                reportOutcome(governedLingId, businessStartNanos, failure);
                 admission.close();
                 throw failure;
             }
@@ -103,6 +107,19 @@ public class LingCoreBeanGovernanceInterceptor implements MethodInterceptor {
             throw e;
         } finally {
             ctx.recycle();
+        }
+    }
+
+    /** 将 Bean 真实业务结果回灌给治理器，覆盖同步和异步终态。 */
+    private void reportOutcome(String lingId, long startNanos, Throwable failure) {
+        if (failure instanceof Error) {
+            return;
+        }
+        try {
+            pipelineEngine.reportOutcome(lingId, failure == null,
+                    Math.max(0L, System.nanoTime() - startNanos), failure);
+        } catch (RuntimeException reportFailure) {
+            log.debug("Failed to report Bean invocation outcome for ling {}", lingId, reportFailure);
         }
     }
 

@@ -19,6 +19,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 运行时状态协调器，也是 {@link RuntimeStatus} 状态机的唯一拥有者。
@@ -115,6 +116,9 @@ public class RuntimeCoordinator {
      */
     private volatile ScheduledExecutorService healthCheckExecutor;
 
+    /** 防止重复启动导致全局监听器重复注册。 */
+    private final AtomicBoolean started = new AtomicBoolean(false);
+
     public RuntimeCoordinator(EventBus eventBus) {
         this(eventBus, new DefaultRuntimeEvaluationPolicy());
     }
@@ -125,7 +129,7 @@ public class RuntimeCoordinator {
      */
     public RuntimeCoordinator(EventBus eventBus, RuntimeEvaluationPolicy policy) {
         this.eventBus = Objects.requireNonNull(eventBus, "EventBus must not be null");
-        this.policy = policy;
+        this.policy = Objects.requireNonNull(policy, "RuntimeEvaluationPolicy must not be null");
 
         // 构造时创建监听器引用，便于 start/stop 对称注册注销
         this.stateChangedListener = this::onInstanceStateChanged;
@@ -138,16 +142,40 @@ public class RuntimeCoordinator {
      * 启动协调器：注册全局事件监听器 + 启动 DEGRADED 健康检查
      */
     public void start() {
+        if (!started.compareAndSet(false, true)) {
+            return;
+        }
         log.info("RuntimeCoordinator starting, subscribing to instance events");
-        eventBus.subscribeGlobal(InstanceStateChangedEvent.class, stateChangedListener);
-        eventBus.subscribeGlobal(InstanceDestroyedEvent.class, destroyedListener);
-        startHealthCheck();
+        try {
+            eventBus.subscribeGlobal(InstanceStateChangedEvent.class, stateChangedListener);
+            eventBus.subscribeGlobal(InstanceDestroyedEvent.class, destroyedListener);
+            startHealthCheck();
+        } catch (RuntimeException startupFailure) {
+            try {
+                try {
+                    eventBus.unsubscribeGlobal(InstanceStateChangedEvent.class, stateChangedListener);
+                } catch (RuntimeException cleanupFailure) {
+                    startupFailure.addSuppressed(cleanupFailure);
+                }
+                try {
+                    eventBus.unsubscribeGlobal(InstanceDestroyedEvent.class, destroyedListener);
+                } catch (RuntimeException cleanupFailure) {
+                    startupFailure.addSuppressed(cleanupFailure);
+                }
+            } finally {
+                started.set(false);
+            }
+            throw startupFailure;
+        }
     }
 
     /**
      * 停止协调器：注销全局事件监听器 + 停止健康检查
      */
     public void stop() {
+        if (!started.compareAndSet(true, false)) {
+            return;
+        }
         log.info("RuntimeCoordinator stopping, unsubscribing from instance events");
         eventBus.unsubscribeGlobal(InstanceStateChangedEvent.class, stateChangedListener);
         eventBus.unsubscribeGlobal(InstanceDestroyedEvent.class, destroyedListener);
