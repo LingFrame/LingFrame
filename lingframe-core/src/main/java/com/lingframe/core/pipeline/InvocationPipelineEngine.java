@@ -51,8 +51,7 @@ public class InvocationPipelineEngine {
                     ctx.getServiceFQSID(), LingInvocationException.ErrorKind.INTERNAL_ERROR, e);
         } finally {
             if (providerMetricsCollector != null) {
-                long durationMs = providerMetricsCollector != null
-                        ? Math.max(0L, (System.nanoTime() - startTime) / 1_000_000L) : 0L;
+                long durationMs = Math.max(0L, (System.nanoTime() - startTime) / 1_000_000L);
                 recordProviderMetrics(ctx, success, durationMs);
             }
             InvocationContext.detach(prev);
