@@ -1,4 +1,4 @@
-name: Release and Mirror
+name: Release and Metadata Sync
 
 on:
   workflow_run:
@@ -91,7 +91,7 @@ jobs:
           git push "https://x-access-token:${GH_TOKEN}@github.com/${GH_REPO}.git" \
             "${RELEASE_SHA}:refs/heads/${RELEASE_BRANCH}"
 
-  mirror:
+  release-metadata:
     needs: release
     if: needs.release.outputs.tag != ''
     runs-on: ubuntu-latest
@@ -102,35 +102,55 @@ jobs:
       matrix:
         platform: [gitee, gitcode]
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Synchronize main and release tag
+      - name: Synchronize Release metadata
         env:
           PLATFORM: ${{ matrix.platform }}
           RELEASE_TAG: ${{ needs.release.outputs.tag }}
-          RELEASE_BRANCH: ${{ needs.release.outputs.release_branch }}
-          MIRROR_KEY: ${{ matrix.platform == 'gitee' && secrets.GITEE_SSH_KEY || secrets.GITCODE_SSH_KEY }}
-          MIRROR_HOST_KEYS: ${{ secrets.MIRROR_KNOWN_HOSTS }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$MIRROR_KEY" && test -n "$MIRROR_HOST_KEYS"
-          key_dir=$(mktemp -d)
-          trap 'rm -rf "$key_dir"' EXIT
-          printf '%s\n' "$MIRROR_KEY" > "$key_dir/key"
-          printf '%s\n' "$MIRROR_HOST_KEYS" > "$key_dir/known_hosts"
-          chmod 600 "$key_dir/key"
-          export GIT_SSH_COMMAND="ssh -i $key_dir/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$key_dir/known_hosts"
+          release_json=$(mktemp)
+          trap 'rm -f "$release_json"' EXIT
+          gh api "repos/$GH_REPO/releases/tags/$RELEASE_TAG" > "$release_json"
+          release_name=$(jq -r '.name' "$release_json")
+          release_body=$(jq -r '.body // ""' "$release_json")
+          target_commitish=$(jq -r '.target_commitish // ""' "$release_json")
+          test -n "$release_name"
           case "$PLATFORM" in
-            gitee) remote='git@gitee.com:LingFrame/LingFrame.git' ;;
-            gitcode) remote='git@gitcode.com:lingframe/LingFrame.git' ;;
+            gitee)
+              test -n "$GITEE_TOKEN"
+              api_base='https://gitee.com/api/v5/repos/LingFrame/LingFrame/releases'
+              get_url="$api_base/tags/$RELEASE_TAG?access_token=$GITEE_TOKEN"
+              create_url="$api_base?access_token=$GITEE_TOKEN"
+              payload=$(jq -n --arg tag "$RELEASE_TAG" --arg name "$release_name" --arg body "$release_body" --arg target "$target_commitish" \
+                '{tag_name:$tag,name:$name,body:$body,target_commitish:$target}')
+              ;;
+            gitcode)
+              test -n "$GITCODE_TOKEN"
+              api_base='https://api.gitcode.com/api/v5/repos/lingframe/LingFrame/releases'
+              get_url="$api_base/tags/$RELEASE_TAG?access_token=$GITCODE_TOKEN"
+              create_url="$api_base?access_token=$GITCODE_TOKEN"
+              payload=$(jq -n --arg tag "$RELEASE_TAG" --arg name "$release_name" --arg body "$release_body" --arg target "$target_commitish" \
+                '{tag_name:$tag,name:$name,body:$body,target_commitish:$target,release_status:"latest"}')
+              ;;
+            *) echo "Unsupported platform: $PLATFORM"; exit 1 ;;
           esac
-          git push "$remote" HEAD:refs/heads/main
-          git push "$remote" "HEAD:refs/heads/$RELEASE_BRANCH"
-          if [ -n "$RELEASE_TAG" ]; then
-            git fetch origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-            git push "$remote" "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-          fi
+          status=$(curl -sS -o /dev/null -w '%{http_code}' "$get_url")
+          case "$status" in
+            200)
+              echo "$PLATFORM Release $RELEASE_TAG already exists; skipping creation."
+              ;;
+            404)
+              curl --fail-with-body -sS -X POST "$create_url" \
+                -H 'Content-Type: application/json' \
+                --data "$payload"
+              ;;
+            *)
+              echo "Unable to inspect $PLATFORM Release $RELEASE_TAG (HTTP $status)"
+              exit 1
+              ;;
+          esac
