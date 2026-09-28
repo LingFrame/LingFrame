@@ -11,6 +11,7 @@ on:
         type: choice
         default: full
         options:
+          - quick
           - full
           - performance
 
@@ -19,12 +20,72 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 先判断本次变更需要哪一层验证，避免文档或发布说明修改启动完整矩阵。
+  changes:
+    name: Detect change scope
+    runs-on: ubuntu-latest
+    outputs:
+      unit: ${{ steps.scope.outputs.unit }}
+      integration: ${{ steps.scope.outputs.integration }}
+      docs_only: ${{ steps.scope.outputs.docs_only }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Classify changed paths
+        id: scope
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
+          SUITE: ${{ github.event_name == 'workflow_dispatch' && inputs.suite || '' }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            git diff --name-only "$BASE_SHA" "$GITHUB_SHA" > changed-files.txt
+          else
+            git diff --name-only HEAD^ HEAD > changed-files.txt
+          fi
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          paths = [line.strip().replace('\\', '/') for line in Path('changed-files.txt').read_text().splitlines() if line.strip()]
+          integration_roots = ('lingframe-examples/', 'lingframe-runtime/', 'lingframe-dashboard/', 'lingframe-infrastructure/')
+          config_roots = ('.github/workflows/', '.mvn/', 'pom.xml', 'scripts/')
+          unit = any(
+              (path.endswith(('.java', '.xml', '.yml', '.yaml', '.properties')) and not path.startswith('docs/'))
+              or path.startswith(config_roots)
+              for path in paths
+          )
+          integration = any(
+              path.startswith(integration_roots) or path.endswith('IntegrationTest.java')
+              for path in paths
+          )
+          if any(path.startswith('.github/workflows/') for path in paths):
+              unit = integration = True
+          if os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch':
+              if os.environ.get('SUITE') == 'full':
+                  unit = integration = True
+              elif os.environ.get('SUITE') == 'performance':
+                  unit = integration = False
+          print(f'unit={str(unit).lower()}')
+          print(f'integration={str(integration).lower()}')
+          print(f'docs_only={str(bool(paths) and not unit).lower()}')
+          with open(Path.cwd() / 'scope.env', 'w', encoding='utf-8') as out:
+              out.write(f'unit={str(unit).lower()}\n')
+              out.write(f'integration={str(integration).lower()}\n')
+              out.write(f'docs_only={str(bool(paths) and not unit).lower()}\n')
+          PY
+          cat scope.env >> "$GITHUB_OUTPUT"
+
   # ──────────────────────────────────────────────
   # JDK 8 + Spring Boot 2.x：编译、测试、覆盖率
   # ──────────────────────────────────────────────
   build-and-test:
     name: Build & Test (SB2 / JDK 8)
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full')
+    needs: changes
+    if: needs.changes.outputs.unit == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full'))
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -91,9 +152,9 @@ jobs:
   # ──────────────────────────────────────────────
   example-it-sb2:
     name: Example IT Smoke (SB2 / JDK 8)
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full')
+    if: needs.changes.outputs.integration == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full'))
     runs-on: ubuntu-latest
-    needs: build-and-test
+    needs: [changes, build-and-test]
     timeout-minutes: 20
 
     steps:
@@ -128,7 +189,8 @@ jobs:
   # ──────────────────────────────────────────────
   build-and-test-sb3:
     name: Build & Test (SB3 / JDK 17)
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full')
+    needs: changes
+    if: needs.changes.outputs.unit == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -188,9 +250,9 @@ jobs:
   # ──────────────────────────────────────────────
   example-it-sb3:
     name: Example IT Smoke (SB3 / JDK 17)
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full')
+    if: needs.changes.outputs.integration == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full'))
     runs-on: ubuntu-latest
-    needs: build-and-test-sb3
+    needs: [changes, build-and-test-sb3]
     timeout-minutes: 20
 
     steps:
@@ -226,8 +288,8 @@ jobs:
   coverage-check-sb2:
     name: Coverage Gate (SB2 / JDK 8)
     runs-on: ubuntu-latest
-    needs: build-and-test
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full')
+    needs: [changes, build-and-test]
+    if: needs.changes.outputs.unit == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full'))
     timeout-minutes: 25
 
     steps:
@@ -263,8 +325,8 @@ jobs:
   coverage-check-sb3:
     name: Coverage Gate (SB3 / JDK 17)
     runs-on: ubuntu-latest
-    needs: build-and-test-sb3
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full')
+    needs: [changes, build-and-test-sb3]
+    if: needs.changes.outputs.unit == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full'))
     timeout-minutes: 10
 
     steps:
@@ -293,6 +355,57 @@ jobs:
           # @check 引用 pom 中 <id>check</id> 的 execution（带 rules/dataFile）；
           # 裸 `jacoco:check` 是 default-cli 调用，读不到 execution 的 rules → 报 missing/invalid
           mvn -B jacoco:check@check -pl lingframe-core,lingframe-dashboard,lingframe-runtime/lingframe-spring-boot-starter
+
+  # 文档、发布说明等轻量变更仍保留一个稳定的 PR 检查，避免无代码改动启动 Maven 矩阵。
+  quick-check:
+    name: Quick Validation
+    needs: changes
+    if: always() && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'quick'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check patch whitespace
+        run: git diff --check "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || 'HEAD^' }}" "$GITHUB_SHA"
+
+  # 分支保护只需要要求这个汇总检查，单个按变更跳过的 job 不会留下 pending 检查。
+  required-gate:
+    name: Required Gate
+    needs: [changes, quick-check, build-and-test, build-and-test-sb3, example-it-sb2, example-it-sb3, coverage-check-sb2, coverage-check-sb3]
+    if: always() && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite != 'performance'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify required checks for the selected scope
+        env:
+          UNIT: ${{ needs.changes.outputs.unit }}
+          INTEGRATION: ${{ needs.changes.outputs.integration }}
+          QUICK: ${{ needs.quick-check.result }}
+          SB2: ${{ needs.build-and-test.result }}
+          SB3: ${{ needs.build-and-test-sb3.result }}
+          IT_SB2: ${{ needs.example-it-sb2.result }}
+          IT_SB3: ${{ needs.example-it-sb3.result }}
+          COVERAGE_SB2: ${{ needs.coverage-check-sb2.result }}
+          COVERAGE_SB3: ${{ needs.coverage-check-sb3.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$UNIT" = true ]; then
+            test "$SB2" = success
+            test "$SB3" = success
+            test "$COVERAGE_SB2" = success
+            test "$COVERAGE_SB3" = success
+          fi
+          if [ "$INTEGRATION" = true ]; then
+            test "$IT_SB2" = success
+            test "$IT_SB3" = success
+          fi
+          if [ "$UNIT" != true ] && [ "$INTEGRATION" != true ]; then
+            test "$QUICK" = success
+          fi
+          echo 'Required CI checks passed for the detected change scope.'
 
   # ──────────────────────────────────────────────
   # 性能基线：JDK 8 + JDK 17 双版本基准测试
