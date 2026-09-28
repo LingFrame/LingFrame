@@ -112,8 +112,7 @@ jobs:
       ) &&
       (
         github.event_name == 'workflow_run' ||
-        inputs.platform == 'all' ||
-        inputs.platform == matrix.platform
+        github.event_name == 'workflow_dispatch'
       )
     strategy:
       fail-fast: false
@@ -124,6 +123,10 @@ jobs:
     environment: mirrors
     steps:
       - name: Synchronize Release metadata
+        if: >-
+          github.event_name == 'workflow_run' ||
+          inputs.platform == 'all' ||
+          inputs.platform == matrix.platform
         env:
           RELEASE_VERSIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.versions || needs.release.outputs.tag }}
           PLATFORM: ${{ matrix.platform }}
