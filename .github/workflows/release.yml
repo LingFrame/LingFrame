@@ -1,4 +1,4 @@
-name: Release and Mirror
+name: Release and Metadata Sync
 
 on:
   workflow_run:
@@ -7,10 +7,18 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      version:
-        description: '明确指定要重新发布的现有稳定版本（仅用于恢复发布物）'
+      versions:
+        description: '要同步的版本，支持逗号或换行分隔，例如 0.4.5,0.4.6,0.4.7'
         required: true
         type: string
+      platform:
+        description: '要同步的平台'
+        required: true
+        type: choice
+        options:
+          - all
+          - gitee
+          - gitcode
 
 permissions:
   contents: read
@@ -30,11 +38,6 @@ jobs:
           github.event.workflow_run.event == 'push' &&
           github.event.workflow_run.head_branch == 'main' &&
           github.event.workflow_run.head_repository.full_name == github.repository
-        ) ||
-        (
-          github.event_name == 'workflow_dispatch' &&
-          github.ref_name == 'main' &&
-          inputs.version != ''
         )
       )
     runs-on: ubuntu-latest
@@ -53,7 +56,7 @@ jobs:
       - name: Check release intent and extract changelog
         id: prepare
         env:
-          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+          RELEASE_VERSION: ''
         run: python3 scripts/release/prepare.py
       - name: Create immutable release
         if: steps.prepare.outputs.release == 'true'
@@ -91,46 +94,87 @@ jobs:
           git push "https://x-access-token:${GH_TOKEN}@github.com/${GH_REPO}.git" \
             "${RELEASE_SHA}:refs/heads/${RELEASE_BRANCH}"
 
-  mirror:
+  release-metadata:
     needs: release
-    if: needs.release.outputs.tag != ''
+    if: >-
+      always() &&
+      (
+        (
+          github.event_name == 'workflow_run' &&
+          needs.release.result == 'success' &&
+          needs.release.outputs.tag != ''
+        ) ||
+        (
+          github.event_name == 'workflow_dispatch' &&
+          github.ref_name == 'main' &&
+          inputs.versions != ''
+        )
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: mirrors
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: [gitee, gitcode]
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Synchronize main and release tag
+      - name: Synchronize Release metadata
         env:
-          PLATFORM: ${{ matrix.platform }}
-          RELEASE_TAG: ${{ needs.release.outputs.tag }}
-          RELEASE_BRANCH: ${{ needs.release.outputs.release_branch }}
-          MIRROR_KEY: ${{ matrix.platform == 'gitee' && secrets.GITEE_SSH_KEY || secrets.GITCODE_SSH_KEY }}
-          MIRROR_HOST_KEYS: ${{ secrets.MIRROR_KNOWN_HOSTS }}
+          RELEASE_VERSIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.versions || needs.release.outputs.tag }}
+          PLATFORM: ${{ github.event_name == 'workflow_dispatch' && inputs.platform || 'all' }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$MIRROR_KEY" && test -n "$MIRROR_HOST_KEYS"
-          key_dir=$(mktemp -d)
-          trap 'rm -rf "$key_dir"' EXIT
-          printf '%s\n' "$MIRROR_KEY" > "$key_dir/key"
-          printf '%s\n' "$MIRROR_HOST_KEYS" > "$key_dir/known_hosts"
-          chmod 600 "$key_dir/key"
-          export GIT_SSH_COMMAND="ssh -i $key_dir/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$key_dir/known_hosts"
           case "$PLATFORM" in
-            gitee) remote='git@gitee.com:LingFrame/LingFrame.git' ;;
-            gitcode) remote='git@gitcode.com:lingframe/LingFrame.git' ;;
+            all) platforms='gitee gitcode' ;;
+            gitee|gitcode) platforms="$PLATFORM" ;;
+            *) echo "Unsupported platform: $PLATFORM"; exit 1 ;;
           esac
-          git push "$remote" HEAD:refs/heads/main
-          git push "$remote" "HEAD:refs/heads/$RELEASE_BRANCH"
-          if [ -n "$RELEASE_TAG" ]; then
-            git fetch origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-            git push "$remote" "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-          fi
+
+          for version in $(printf '%s' "$RELEASE_VERSIONS" | tr ',\r\n' '   '); do
+            [ -n "$version" ] || continue
+            tag="V${version#V}"
+            release_json=$(mktemp)
+            trap 'rm -f "$release_json"' EXIT
+            gh api "repos/$GH_REPO/releases/tags/$tag" > "$release_json"
+            release_name=$(jq -r '.name' "$release_json")
+            release_body=$(jq -r '.body // ""' "$release_json")
+            target_commitish=$(jq -r '.target_commitish // ""' "$release_json")
+            test -n "$release_name"
+
+            for platform in $platforms; do
+              case "$platform" in
+                gitee)
+                  test -n "$GITEE_TOKEN"
+                  api_base='https://gitee.com/api/v5/repos/LingFrame/LingFrame/releases'
+                  token="$GITEE_TOKEN"
+                  payload=$(jq -n --arg tag "$tag" --arg name "$release_name" --arg body "$release_body" --arg target "$target_commitish" \
+                    '{tag_name:$tag,name:$name,body:$body,target_commitish:$target}')
+                  ;;
+                gitcode)
+                  test -n "$GITCODE_TOKEN"
+                  api_base='https://api.gitcode.com/api/v5/repos/lingframe/LingFrame/releases'
+                  token="$GITCODE_TOKEN"
+                  payload=$(jq -n --arg tag "$tag" --arg name "$release_name" --arg body "$release_body" --arg target "$target_commitish" \
+                    '{tag_name:$tag,name:$name,body:$body,target_commitish:$target,release_status:"latest"}')
+                  ;;
+              esac
+              get_url="$api_base/tags/$tag?access_token=$token"
+              create_url="$api_base?access_token=$token"
+              status=$(curl -sS -o /dev/null -w '%{http_code}' "$get_url")
+              case "$status" in
+                200)
+                  echo "$platform Release $tag already exists; skipping creation."
+                  ;;
+                404)
+                  curl --fail-with-body -sS -X POST "$create_url" \
+                    -H 'Content-Type: application/json' \
+                    --data "$payload"
+                  ;;
+                *)
+                  echo "Unable to inspect $platform Release $tag (HTTP $status)"
+                  exit 1
+                  ;;
+              esac
+            done
+          done
