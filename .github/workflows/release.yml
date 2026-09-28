@@ -159,7 +159,7 @@ jobs:
                     '{tag_name:$tag,name:$name,body:$body,target_commitish:$target,release_status:"latest"}')
                   ;;
               esac
-              get_url="$api_base/tags/$tag?access_token=$token"
+              get_url="$api_base?access_token=$token&per_page=100"
               create_url="$api_base?access_token=$token"
               response_file=$(mktemp)
               trap 'rm -f "$release_json" "$response_file"' EXIT
@@ -169,9 +169,9 @@ jobs:
                 "$get_url")
               case "$status" in
                 200)
-                  remote_id=$(jq -r --arg tag "$tag" 'if type == "array" then (map(select(.tag_name == $tag)) | first | .id // empty) else .id // empty end' "$response_file")
-                  remote_tag=$(jq -r --arg tag "$tag" 'if type == "array" then (map(select(.tag_name == $tag)) | first | .tag_name // empty) else .tag_name // empty end' "$response_file")
-                  remote_url=$(jq -r --arg tag "$tag" 'if type == "array" then (map(select(.tag_name == $tag)) | first | (.html_url // .web_url // empty)) else (.html_url // .web_url // empty) end' "$response_file")
+                  remote_id=$(jq -r --arg tag "$tag" 'if type == "array" then (map(select(.tag_name == $tag)) | first | .id // empty) else empty end' "$response_file")
+                  remote_tag=$(jq -r --arg tag "$tag" 'if type == "array" then (map(select(.tag_name == $tag)) | first | .tag_name // empty) else empty end' "$response_file")
+                  remote_url=$(jq -r --arg tag "$tag" 'if type == "array" then (map(select(.tag_name == $tag)) | first | (.html_url // .web_url // empty)) else empty end' "$response_file")
                   if [ -z "$remote_id" ] && jq -e 'type == "array"' "$response_file" >/dev/null; then
                     echo "$platform returned no Release for $tag; creating it."
                     curl --fail-with-body -sS -X POST "$create_url" \
@@ -182,8 +182,8 @@ jobs:
                     continue
                   fi
                   if [ -z "$remote_id" ] || [ "$remote_tag" != "$tag" ]; then
-                    echo "$platform returned an invalid Release object for $tag; expected id and matching tag."
-                    jq -c '{id,tag_name,name,html_url,web_url,message}' "$response_file"
+                    echo "$platform returned an invalid Release list for $tag; expected an array of Releases."
+                    jq -c 'if type == "array" then {type:"array",count:length} else {type:(type),keys:(keys)} end' "$response_file"
                     exit 1
                   fi
                   echo "$platform Release $tag found (id=$remote_id${remote_url:+, url=$remote_url}); updating metadata."
