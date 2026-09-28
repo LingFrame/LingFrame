@@ -169,9 +169,18 @@ jobs:
                 "$get_url")
               case "$status" in
                 200)
-                  remote_id=$(jq -r '.id // empty' "$response_file")
-                  remote_tag=$(jq -r '.tag_name // empty' "$response_file")
-                  remote_url=$(jq -r '.html_url // .web_url // empty' "$response_file")
+                  remote_id=$(jq -r --arg tag "$tag" 'if type == "array" then (map(select(.tag_name == $tag)) | first | .id // empty) else .id // empty end' "$response_file")
+                  remote_tag=$(jq -r --arg tag "$tag" 'if type == "array" then (map(select(.tag_name == $tag)) | first | .tag_name // empty) else .tag_name // empty end' "$response_file")
+                  remote_url=$(jq -r --arg tag "$tag" 'if type == "array" then (map(select(.tag_name == $tag)) | first | (.html_url // .web_url // empty)) else (.html_url // .web_url // empty) end' "$response_file")
+                  if [ -z "$remote_id" ] && jq -e 'type == "array"' "$response_file" >/dev/null; then
+                    echo "$platform returned no Release for $tag; creating it."
+                    curl --fail-with-body -sS -X POST "$create_url" \
+                      -H 'Accept: application/json' \
+                      -H 'Content-Type: application/json' \
+                      -H "Authorization: Bearer $token" \
+                      --data "$payload"
+                    continue
+                  fi
                   if [ -z "$remote_id" ] || [ "$remote_tag" != "$tag" ]; then
                     echo "$platform returned an invalid Release object for $tag; expected id and matching tag."
                     jq -c '{id,tag_name,name,html_url,web_url,message}' "$response_file"
