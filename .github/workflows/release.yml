@@ -150,8 +150,14 @@ jobs:
             gh api "repos/$GH_REPO/releases/tags/$tag" > "$release_json"
             release_name=$(jq -r '.name' "$release_json")
             release_body=$(jq -r '.body // ""' "$release_json")
-            target_commitish=$(jq -r '.target_commitish // ""' "$release_json")
+            tag_ref=$(gh api "repos/$GH_REPO/git/ref/tags/$tag")
+            target_commitish=$(jq -r '.object.sha // empty' <<< "$tag_ref")
+            tag_object_type=$(jq -r '.object.type // empty' <<< "$tag_ref")
+            if [ "$tag_object_type" = 'tag' ]; then
+              target_commitish=$(gh api "repos/$GH_REPO/git/tags/$target_commitish" --jq '.object.sha')
+            fi
             test -n "$release_name"
+            [[ "$target_commitish" =~ ^[0-9a-fA-F]{40}$ ]]
 
             for platform in $platforms; do
               case "$platform" in
@@ -217,7 +223,7 @@ jobs:
                             continue
                           fi
                 if [ "$platform" = 'gitcode' ]; then
-                  update_url="$api_base/tags/$remote_tag?access_token=$token"
+                  update_url="$api_base/$remote_tag?access_token=$token"
                 else
                   update_url="$api_base/$remote_id?access_token=$token"
                 fi
@@ -258,7 +264,7 @@ jobs:
                   fi
                   echo "$platform Release $tag found (id=$remote_id${remote_url:+, url=$remote_url}); updating metadata."
                   if [ "$platform" = 'gitcode' ]; then
-                    update_url="$api_base/tags/$remote_tag?access_token=$token"
+                    update_url="$api_base/$remote_tag?access_token=$token"
                   else
                     update_url="$api_base/$remote_id?access_token=$token"
                   fi
