@@ -159,16 +159,34 @@ jobs:
                     '{tag_name:$tag,name:$name,body:$body,target_commitish:$target,release_status:"latest"}')
                   ;;
               esac
-              get_url="$api_base/tags/$tag?access_token=$token"
-              create_url="$api_base?access_token=$token"
-              status=$(curl -sS -o /dev/null -w '%{http_code}' "$get_url")
+              get_url="$api_base/tags/$tag"
+              create_url="$api_base"
+              response_file=$(mktemp)
+              trap 'rm -f "$release_json" "$response_file"' EXIT
+              status=$(curl -sS -o "$response_file" -w '%{http_code}' \
+                -H 'Accept: application/json' \
+                -H "Authorization: Bearer $token" \
+                "$get_url")
               case "$status" in
                 200)
-                  echo "$platform Release $tag already exists; skipping creation."
+                  remote_id=$(jq -r '.id // empty' "$response_file")
+                  remote_tag=$(jq -r '.tag_name // empty' "$response_file")
+                  remote_url=$(jq -r '.html_url // .web_url // empty' "$response_file")
+                  test -n "$remote_id"
+                  test "$remote_tag" = "$tag"
+                  echo "$platform Release $tag found (id=$remote_id${remote_url:+, url=$remote_url}); updating metadata."
+                  curl --fail-with-body -sS -X PATCH "$api_base/$remote_id" \
+                    -H 'Accept: application/json' \
+                    -H 'Content-Type: application/json' \
+                    -H "Authorization: Bearer $token" \
+                    --data "$payload"
                   ;;
                 404)
+                  echo "$platform Release $tag was not found; creating it."
                   curl --fail-with-body -sS -X POST "$create_url" \
+                    -H 'Accept: application/json' \
                     -H 'Content-Type: application/json' \
+                    -H "Authorization: Bearer $token" \
                     --data "$payload"
                   ;;
                 *)
