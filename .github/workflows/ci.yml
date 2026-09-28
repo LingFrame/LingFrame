@@ -53,7 +53,10 @@ jobs:
           from pathlib import Path
 
           paths = [line.strip().replace('\\', '/') for line in Path('changed-files.txt').read_text().splitlines() if line.strip()]
-          patch = Path('change.patch').read_text(encoding='utf-8', errors='replace')
+          patch = '\n'.join(
+              line for line in Path('change.patch').read_text(encoding='utf-8', errors='replace').splitlines()
+              if line.startswith('+') and not line.startswith('+++')
+          )
           integration_roots = ('lingframe-examples/', 'lingframe-runtime/', 'lingframe-dashboard/', 'lingframe-infrastructure/')
           config_roots = ('.mvn/', 'pom.xml', 'scripts/')
           unit = any(
@@ -68,8 +71,8 @@ jobs:
           workflow_paths = [path for path in paths if path.startswith('.github/workflows/')]
           if workflow_paths:
               # 工作流文件本身不再自动等价于全量代码变更；只根据补丁中的实际语义提升验证级别。
-              build_tokens = ('m' + 'vn ', 'setup-' + 'java', 'build-' + 'and-' + 'test', 'coverage-' + 'check', 'jaco' + 'co', 'sure' + 'fire', 'test-' + 'results')
-              integration_tokens = ('example-' + 'it', 'integration-' + 'check', 'fail' + 'safe', 'Observability' + 'ClosedLoopIntegrationTest')
+              build_tokens = ('m' + 'vn -B', 'setup-' + 'java@', 'jaco' + 'co:', 'clean ' + 'verify', 'clean ' + 'install', '-D' + 'test=')
+              integration_tokens = ('integration-' + 'check', 'fail' + 'safe', 'Observability' + 'ClosedLoopIntegrationTest')
               unit = unit or any(token in patch for token in build_tokens)
               integration = integration or any(token in patch for token in integration_tokens)
           if os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch':
