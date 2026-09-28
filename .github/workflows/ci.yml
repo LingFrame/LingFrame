@@ -43,18 +43,21 @@ jobs:
           set -euo pipefail
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
             git diff --name-only "$BASE_SHA" "$GITHUB_SHA" > changed-files.txt
+            git diff --no-ext-diff "$BASE_SHA" "$GITHUB_SHA" > change.patch
           else
             git diff --name-only HEAD^ HEAD > changed-files.txt
+            git diff --no-ext-diff HEAD^ HEAD > change.patch
           fi
           python3 - <<'PY'
           import os
           from pathlib import Path
 
           paths = [line.strip().replace('\\', '/') for line in Path('changed-files.txt').read_text().splitlines() if line.strip()]
+          patch = Path('change.patch').read_text(encoding='utf-8', errors='replace')
           integration_roots = ('lingframe-examples/', 'lingframe-runtime/', 'lingframe-dashboard/', 'lingframe-infrastructure/')
-          config_roots = ('.github/workflows/', '.mvn/', 'pom.xml', 'scripts/')
+          config_roots = ('.mvn/', 'pom.xml', 'scripts/')
           unit = any(
-              (path.endswith(('.java', '.xml', '.yml', '.yaml', '.properties')) and not path.startswith('docs/'))
+              (path.endswith(('.java', '.xml', '.yml', '.yaml', '.properties')) and not path.startswith(('docs/', '.github/workflows/')))
               or path.startswith(config_roots)
               for path in paths
           )
@@ -62,8 +65,13 @@ jobs:
               path.startswith(integration_roots) or path.endswith('IntegrationTest.java')
               for path in paths
           )
-          if any(path.startswith('.github/workflows/') for path in paths):
-              unit = integration = True
+          workflow_paths = [path for path in paths if path.startswith('.github/workflows/')]
+          if workflow_paths:
+              # 工作流文件本身不再自动等价于全量代码变更；只根据补丁中的实际语义提升验证级别。
+              build_tokens = ('m' + 'vn ', 'setup-' + 'java', 'build-' + 'and-' + 'test', 'coverage-' + 'check', 'jaco' + 'co', 'sure' + 'fire', 'test-' + 'results')
+              integration_tokens = ('example-' + 'it', 'integration-' + 'check', 'fail' + 'safe', 'Observability' + 'ClosedLoopIntegrationTest')
+              unit = unit or any(token in patch for token in build_tokens)
+              integration = integration or any(token in patch for token in integration_tokens)
           if os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch':
               if os.environ.get('SUITE') == 'full':
                   unit = integration = True
