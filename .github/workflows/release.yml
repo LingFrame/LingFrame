@@ -159,7 +159,7 @@ jobs:
                     '{tag_name:$tag,name:$name,body:$body,target_commitish:$target,release_status:"latest"}')
                   ;;
               esac
-              get_url="$api_base?access_token=$token&per_page=100"
+              get_url="$api_base?access_token=$token&page=1&per_page=100"
               create_url="$api_base?access_token=$token"
               response_file=$(mktemp)
               trap 'rm -f "$release_json" "$response_file"' EXIT
@@ -169,16 +169,53 @@ jobs:
                 "$get_url")
               case "$status" in
                 200)
-                  remote_id=$(jq -r --arg tag "$tag" 'if type == "array" then (map(select(.tag_name == $tag)) | first | .id // empty) else empty end' "$response_file")
-                  remote_tag=$(jq -r --arg tag "$tag" 'if type == "array" then (map(select(.tag_name == $tag)) | first | .tag_name // empty) else empty end' "$response_file")
-                  remote_url=$(jq -r --arg tag "$tag" 'if type == "array" then (map(select(.tag_name == $tag)) | first | (.html_url // .web_url // empty)) else empty end' "$response_file")
+                  remote_id=$(jq -r --arg tag "$tag" 'if type == "array" then (map(select((.tag_name // "") | ascii_downcase == ($tag | ascii_downcase))) | first | .id // empty) else empty end' "$response_file")
+                  remote_tag=$(jq -r --arg tag "$tag" 'if type == "array" then (map(select((.tag_name // "") | ascii_downcase == ($tag | ascii_downcase))) | first | .tag_name // empty) else empty end' "$response_file")
+                  remote_url=$(jq -r --arg tag "$tag" 'if type == "array" then (map(select((.tag_name // "") | ascii_downcase == ($tag | ascii_downcase))) | first | (.html_url // .web_url // empty)) else empty end' "$response_file")
                   if [ -z "$remote_id" ] && jq -e 'type == "array"' "$response_file" >/dev/null; then
                     echo "$platform returned no Release for $tag; creating it."
-                    curl --fail-with-body -sS -X POST "$create_url" \
+                    create_response=$(mktemp)
+                    create_status=$(curl -sS -o "$create_response" -w '%{http_code}' -X POST "$create_url" \
                       -H 'Accept: application/json' \
                       -H 'Content-Type: application/json' \
                       -H "Authorization: Bearer $token" \
-                      --data "$payload"
+                      --data "$payload")
+                    if [ "$create_status" != 201 ] && [ "$create_status" != 200 ]; then
+                      if [ "$create_status" = 409 ]; then
+                        echo "$platform reported $tag already exists; re-reading by tag variants."
+                        for lookup_tag in "$tag" "v${tag#V}"; do
+                          lookup_response=$(mktemp)
+                          lookup_status=$(curl -sS -o "$lookup_response" -w '%{http_code}' \
+                            -H 'Accept: application/json' \
+                            -H "Authorization: Bearer $token" \
+                            "$api_base/tags/$lookup_tag?access_token=$token")
+                          if [ "$lookup_status" = 200 ]; then
+                            remote_id=$(jq -r '.id // empty' "$lookup_response")
+                            remote_tag=$(jq -r '.tag_name // empty' "$lookup_response")
+                            remote_url=$(jq -r '.html_url // .web_url // empty' "$lookup_response")
+                            rm -f "$lookup_response"
+                            [ -n "$remote_id" ] && break
+                          fi
+                          rm -f "$lookup_response"
+                        done
+                        rm -f "$create_response"
+                        if [ -n "${remote_id:-}" ] && [ -n "${remote_tag:-}" ]; then
+                          update_url="$api_base/$remote_id?access_token=$token"
+                          update_payload=$(jq --arg tag "$remote_tag" '.tag_name = $tag' <<< "$payload")
+                          curl --fail-with-body -sS -X PATCH "$update_url" \
+                            -H 'Accept: application/json' \
+                            -H 'Content-Type: application/json' \
+                            -H "Authorization: Bearer $token" \
+                            --data "$update_payload"
+                          continue
+                        fi
+                      fi
+                      cat "$create_response"
+                      rm -f "$create_response"
+                      exit 1
+                    fi
+                    cat "$create_response"
+                    rm -f "$create_response"
                     continue
                   fi
                   if [ -z "$remote_id" ] || [ "$remote_tag" != "$tag" ]; then
@@ -188,11 +225,12 @@ jobs:
                   fi
                   echo "$platform Release $tag found (id=$remote_id${remote_url:+, url=$remote_url}); updating metadata."
                   update_url="$api_base/$remote_id?access_token=$token"
+                  update_payload=$(jq --arg tag "$remote_tag" '.tag_name = $tag' <<< "$payload")
                   curl --fail-with-body -sS -X PATCH "$update_url" \
                     -H 'Accept: application/json' \
                     -H 'Content-Type: application/json' \
                     -H "Authorization: Bearer $token" \
-                    --data "$payload"
+                    --data "$update_payload"
                   ;;
                 404)
                   echo "$platform Release $tag was not found; creating it."
