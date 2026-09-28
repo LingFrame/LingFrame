@@ -211,12 +211,16 @@ jobs:
                           fi
                           rm -f "$lookup_response"
                         done
-                        if [ -n "${remote_id:-}" ] && [ -n "${remote_tag:-}" ]; then
+              if [ -n "${remote_tag:-}" ] && { [ -n "${remote_id:-}" ] || [ "$platform" = 'gitcode' ]; }; then
                           if [[ "$target_commitish" =~ ^[0-9a-fA-F]{40}$ ]] && [ "$remote_target" = "$target_commitish" ]; then
                             echo "$platform Release $remote_tag already points to $target_commitish; skipping."
                             continue
                           fi
-                          update_url="$api_base/$remote_id?access_token=$token"
+                if [ "$platform" = 'gitcode' ]; then
+                  update_url="$api_base/tags/$remote_tag?access_token=$token"
+                else
+                  update_url="$api_base/$remote_id?access_token=$token"
+                fi
                           update_payload=$(jq --arg tag "$remote_tag" '.tag_name = $tag' <<< "$payload")
                           curl --fail-with-body -sS -X PATCH "$update_url" \
                             -H 'Accept: application/json' \
@@ -248,12 +252,16 @@ jobs:
                     echo "$platform Release $remote_tag already points to $target_commitish; skipping."
                     continue
                   fi
-                  if [ -z "$remote_id" ]; then
+                  if [ -z "$remote_id" ] && [ "$platform" != 'gitcode' ]; then
                     echo "$platform Release $remote_tag exists but has no update id and points to a different commit."
                     exit 1
                   fi
                   echo "$platform Release $tag found (id=$remote_id${remote_url:+, url=$remote_url}); updating metadata."
-                  update_url="$api_base/$remote_id?access_token=$token"
+                  if [ "$platform" = 'gitcode' ]; then
+                    update_url="$api_base/tags/$remote_tag?access_token=$token"
+                  else
+                    update_url="$api_base/$remote_id?access_token=$token"
+                  fi
                   update_payload=$(jq --arg tag "$remote_tag" '.tag_name = $tag' <<< "$payload")
                   curl --fail-with-body -sS -X PATCH "$update_url" \
                     -H 'Accept: application/json' \
