@@ -7,10 +7,18 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      version:
-        description: '明确指定要重新发布的现有稳定版本（仅用于恢复发布物）'
+      versions:
+        description: '要同步的版本，支持逗号或换行分隔，例如 0.4.5,0.4.6,0.4.7'
         required: true
         type: string
+      platform:
+        description: '要同步的平台'
+        required: true
+        type: choice
+        options:
+          - all
+          - gitee
+          - gitcode
 
 permissions:
   contents: read
@@ -30,11 +38,6 @@ jobs:
           github.event.workflow_run.event == 'push' &&
           github.event.workflow_run.head_branch == 'main' &&
           github.event.workflow_run.head_repository.full_name == github.repository
-        ) ||
-        (
-          github.event_name == 'workflow_dispatch' &&
-          github.ref_name == 'main' &&
-          inputs.version != ''
         )
       )
     runs-on: ubuntu-latest
@@ -53,7 +56,7 @@ jobs:
       - name: Check release intent and extract changelog
         id: prepare
         env:
-          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+          RELEASE_VERSION: ''
         run: python3 scripts/release/prepare.py
       - name: Create immutable release
         if: steps.prepare.outputs.release == 'true'
@@ -93,19 +96,28 @@ jobs:
 
   release-metadata:
     needs: release
-    if: needs.release.outputs.tag != ''
+    if: >-
+      always() &&
+      (
+        (
+          github.event_name == 'workflow_run' &&
+          needs.release.result == 'success' &&
+          needs.release.outputs.tag != ''
+        ) ||
+        (
+          github.event_name == 'workflow_dispatch' &&
+          github.ref_name == 'main' &&
+          inputs.versions != ''
+        )
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: mirrors
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: [gitee, gitcode]
     steps:
       - name: Synchronize Release metadata
         env:
-          PLATFORM: ${{ matrix.platform }}
-          RELEASE_TAG: ${{ needs.release.outputs.tag }}
+          RELEASE_VERSIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.versions || needs.release.outputs.tag }}
+          PLATFORM: ${{ github.event_name == 'workflow_dispatch' && inputs.platform || 'all' }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
@@ -113,44 +125,56 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          release_json=$(mktemp)
-          trap 'rm -f "$release_json"' EXIT
-          gh api "repos/$GH_REPO/releases/tags/$RELEASE_TAG" > "$release_json"
-          release_name=$(jq -r '.name' "$release_json")
-          release_body=$(jq -r '.body // ""' "$release_json")
-          target_commitish=$(jq -r '.target_commitish // ""' "$release_json")
-          test -n "$release_name"
           case "$PLATFORM" in
-            gitee)
-              test -n "$GITEE_TOKEN"
-              api_base='https://gitee.com/api/v5/repos/LingFrame/LingFrame/releases'
-              get_url="$api_base/tags/$RELEASE_TAG?access_token=$GITEE_TOKEN"
-              create_url="$api_base?access_token=$GITEE_TOKEN"
-              payload=$(jq -n --arg tag "$RELEASE_TAG" --arg name "$release_name" --arg body "$release_body" --arg target "$target_commitish" \
-                '{tag_name:$tag,name:$name,body:$body,target_commitish:$target}')
-              ;;
-            gitcode)
-              test -n "$GITCODE_TOKEN"
-              api_base='https://api.gitcode.com/api/v5/repos/lingframe/LingFrame/releases'
-              get_url="$api_base/tags/$RELEASE_TAG?access_token=$GITCODE_TOKEN"
-              create_url="$api_base?access_token=$GITCODE_TOKEN"
-              payload=$(jq -n --arg tag "$RELEASE_TAG" --arg name "$release_name" --arg body "$release_body" --arg target "$target_commitish" \
-                '{tag_name:$tag,name:$name,body:$body,target_commitish:$target,release_status:"latest"}')
-              ;;
+            all) platforms='gitee gitcode' ;;
+            gitee|gitcode) platforms="$PLATFORM" ;;
             *) echo "Unsupported platform: $PLATFORM"; exit 1 ;;
           esac
-          status=$(curl -sS -o /dev/null -w '%{http_code}' "$get_url")
-          case "$status" in
-            200)
-              echo "$PLATFORM Release $RELEASE_TAG already exists; skipping creation."
-              ;;
-            404)
-              curl --fail-with-body -sS -X POST "$create_url" \
-                -H 'Content-Type: application/json' \
-                --data "$payload"
-              ;;
-            *)
-              echo "Unable to inspect $PLATFORM Release $RELEASE_TAG (HTTP $status)"
-              exit 1
-              ;;
-          esac
+
+          for version in $(printf '%s' "$RELEASE_VERSIONS" | tr ',\r\n' '   '); do
+            [ -n "$version" ] || continue
+            tag="V${version#V}"
+            release_json=$(mktemp)
+            trap 'rm -f "$release_json"' EXIT
+            gh api "repos/$GH_REPO/releases/tags/$tag" > "$release_json"
+            release_name=$(jq -r '.name' "$release_json")
+            release_body=$(jq -r '.body // ""' "$release_json")
+            target_commitish=$(jq -r '.target_commitish // ""' "$release_json")
+            test -n "$release_name"
+
+            for platform in $platforms; do
+              case "$platform" in
+                gitee)
+                  test -n "$GITEE_TOKEN"
+                  api_base='https://gitee.com/api/v5/repos/LingFrame/LingFrame/releases'
+                  token="$GITEE_TOKEN"
+                  payload=$(jq -n --arg tag "$tag" --arg name "$release_name" --arg body "$release_body" --arg target "$target_commitish" \
+                    '{tag_name:$tag,name:$name,body:$body,target_commitish:$target}')
+                  ;;
+                gitcode)
+                  test -n "$GITCODE_TOKEN"
+                  api_base='https://api.gitcode.com/api/v5/repos/lingframe/LingFrame/releases'
+                  token="$GITCODE_TOKEN"
+                  payload=$(jq -n --arg tag "$tag" --arg name "$release_name" --arg body "$release_body" --arg target "$target_commitish" \
+                    '{tag_name:$tag,name:$name,body:$body,target_commitish:$target,release_status:"latest"}')
+                  ;;
+              esac
+              get_url="$api_base/tags/$tag?access_token=$token"
+              create_url="$api_base?access_token=$token"
+              status=$(curl -sS -o /dev/null -w '%{http_code}' "$get_url")
+              case "$status" in
+                200)
+                  echo "$platform Release $tag already exists; skipping creation."
+                  ;;
+                404)
+                  curl --fail-with-body -sS -X POST "$create_url" \
+                    -H 'Content-Type: application/json' \
+                    --data "$payload"
+                  ;;
+                *)
+                  echo "Unable to inspect $platform Release $tag (HTTP $status)"
+                  exit 1
+                  ;;
+              esac
+            done
+          done
