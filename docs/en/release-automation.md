@@ -2,7 +2,7 @@
 
 LingFrame uses GitHub as its canonical release source. Pull requests select checks by change scope: documentation and release-note changes run a lightweight check, code changes run the SB2/SB3 build and coverage gates, and changes touching examples or runtime paths also run integration smoke tests. Developers can manually dispatch the CI workflow with `quick`, `full`, or `performance` on a development branch. After a merge to `main`, `Main Smoke` runs a short post-merge verification; it does not repeat the full pull-request matrix.
 
-Branch protection should require only `CI / Required Gate`; individual jobs that are conditionally skipped by change scope should not be listed as required checks.
+Branch protection should require only `CI / Required Gate`; individual jobs that are conditionally skipped by change scope should not be listed as required checks. `Quick Validation` runs automatically only for documentation or release-note changes, so code changes do not run it redundantly.
 
 When `Main Smoke` succeeds, the release workflow checks whether the merged commit contains an explicit stable version change and matching release notes. Only then does it create an immutable `V<version>` tag, a GitHub Release, and finally create or advance the `v<version>-release` stable branch. Ordinary feature merges do not create a release. The 0.4 line uses the codename “Hanzhang”, which is retained for 0.4.7.
 

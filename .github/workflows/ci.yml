@@ -360,7 +360,18 @@ jobs:
   quick-check:
     name: Quick Validation
     needs: changes
-    if: always() && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'quick'))
+    if: >-
+      always() &&
+      (
+        (
+          github.event_name == 'pull_request' &&
+          needs.changes.outputs.docs_only == 'true'
+        ) ||
+        (
+          github.event_name == 'workflow_dispatch' &&
+          inputs.suite == 'quick'
+        )
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

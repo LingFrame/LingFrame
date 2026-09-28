@@ -2,7 +2,7 @@
 
 LingFrame 以 GitHub 为主发布源。PR 会先按变更范围选择检查：文档和发布说明只执行轻量校验，代码变更执行 SB2/SB3 构建与覆盖率，涉及示例或运行时路径时再执行集成冒烟。开发分支可以通过 `CI` 工作流的 `workflow_dispatch` 手动选择 `quick`、`full` 或 `performance` 套件。合并到 `main` 后只运行 `Main Smoke` 合并后冒烟检查，不重复执行 PR 的完整矩阵。
 
-分支保护只需将 `CI / Required Gate` 设置为必需检查；各个按变更范围跳过的具体任务不应单独加入必需检查列表。
+分支保护只需将 `CI / Required Gate` 设置为必需检查；各个按变更范围跳过的具体任务不应单独加入必需检查列表。`Quick Validation` 只在文档或发布说明变更时自动执行，代码变更不会重复执行它。
 
 `Main Smoke` 成功后会触发发布工作流。工作流检查当前提交相对父提交是否发生稳定版本变化；只有发布意图明确、版本号和中英文 CHANGELOG 均有效时，才创建不可变的 `V<version>` Tag、GitHub Release，并最后创建或推进 `v<version>-release` 稳定发布分支。普通功能合并不会自动发版。0.4 版本线代号为“含章”，0.4.7 继续沿用该代号。
 
