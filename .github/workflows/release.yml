@@ -159,8 +159,8 @@ jobs:
                     '{tag_name:$tag,name:$name,body:$body,target_commitish:$target,release_status:"latest"}')
                   ;;
               esac
-              get_url="$api_base/tags/$tag"
-              create_url="$api_base"
+              get_url="$api_base/tags/$tag?access_token=$token"
+              create_url="$api_base?access_token=$token"
               response_file=$(mktemp)
               trap 'rm -f "$release_json" "$response_file"' EXIT
               status=$(curl -sS -o "$response_file" -w '%{http_code}' \
@@ -172,10 +172,14 @@ jobs:
                   remote_id=$(jq -r '.id // empty' "$response_file")
                   remote_tag=$(jq -r '.tag_name // empty' "$response_file")
                   remote_url=$(jq -r '.html_url // .web_url // empty' "$response_file")
-                  test -n "$remote_id"
-                  test "$remote_tag" = "$tag"
+                  if [ -z "$remote_id" ] || [ "$remote_tag" != "$tag" ]; then
+                    echo "$platform returned an invalid Release object for $tag; expected id and matching tag."
+                    jq -c '{id,tag_name,name,html_url,web_url,message}' "$response_file"
+                    exit 1
+                  fi
                   echo "$platform Release $tag found (id=$remote_id${remote_url:+, url=$remote_url}); updating metadata."
-                  curl --fail-with-body -sS -X PATCH "$api_base/$remote_id" \
+                  update_url="$api_base/$remote_id?access_token=$token"
+                  curl --fail-with-body -sS -X PATCH "$update_url" \
                     -H 'Accept: application/json' \
                     -H 'Content-Type: application/json' \
                     -H "Authorization: Bearer $token" \
